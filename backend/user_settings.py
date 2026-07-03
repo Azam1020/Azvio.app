@@ -53,12 +53,12 @@ async def _get_user_prefs(user_id: str) -> Dict[str, Any]:
 
 @router.get("/user/settings")
 async def get_settings(user=Depends(get_current_user)):
-    return await _get_user_prefs(user["id"])
+    return await _get_user_prefs(user["user_id"])
 
 
 @router.put("/user/settings/dashboard")
 async def update_dashboard(body: DashboardPrefsUpdate, user=Depends(get_current_user)):
-    prefs = await _get_user_prefs(user["id"])
+    prefs = await _get_user_prefs(user["user_id"])
     dashboard = prefs["dashboard"]
     if body.order is not None:
         # Validate: only known widget keys, no dupes, must cover all defaults
@@ -80,8 +80,8 @@ async def update_dashboard(body: DashboardPrefsUpdate, user=Depends(get_current_
                 merged[k] = bool(v)
         dashboard["visible"] = merged
     await db.user_prefs.update_one(
-        {"user_id": user["id"]},
-        {"$set": {"user_id": user["id"], "dashboard": dashboard}},
+        {"user_id": user["user_id"]},
+        {"$set": {"user_id": user["user_id"], "dashboard": dashboard}},
         upsert=True,
     )
     return {"dashboard": dashboard}
@@ -91,8 +91,8 @@ async def update_dashboard(body: DashboardPrefsUpdate, user=Depends(get_current_
 async def reset_dashboard(user=Depends(get_current_user)):
     default = _default_prefs()
     await db.user_prefs.update_one(
-        {"user_id": user["id"]},
-        {"$set": {"user_id": user["id"], "dashboard": default["dashboard"]}},
+        {"user_id": user["user_id"]},
+        {"$set": {"user_id": user["user_id"], "dashboard": default["dashboard"]}},
         upsert=True,
     )
     return default
