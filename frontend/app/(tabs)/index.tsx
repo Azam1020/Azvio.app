@@ -222,6 +222,8 @@ export default function Dashboard() {
     { title: 'التقويم', sub: 'مواعيد التصوير والتسليم', icon: 'calendar' as const, href: '/calendar' },
     { title: 'خدماتي', sub: 'درون ومونتاج', icon: 'briefcase' as const, href: '/services' },
     { title: 'تسعيرتي', sub: 'أسعارك مقابل السوق', icon: 'pricetags' as const, href: '/pricing' },
+    { title: 'البورتفوليو', sub: 'مشاريعك المُسلَّمة', icon: 'images' as const, href: '/portfolio' },
+    { title: 'تحليل واتساب', sub: 'استخرج العملاء من المحادثات', icon: 'logo-whatsapp' as const, href: '/whatsapp' },
     { title: 'رؤى الأسبوع', sub: 'تقرير سند الأسبوعي', icon: 'analytics' as const, href: '/insights' },
     { title: 'حسابات Google', sub: 'ربط تقويم Google', icon: 'logo-google' as const, href: '/google-accounts' },
     { title: 'روابط سريعة', sub: 'روابطك اليومية', icon: 'link' as const, href: '/links' },

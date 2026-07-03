@@ -10,6 +10,8 @@ from sanad import router as sanad_router
 from google_calendar import router as google_router, public_router as google_public_router
 from supabase_storage import ensure_bucket, is_configured as supabase_configured
 from user_settings import router as user_settings_router
+from whatsapp_analysis import router as whatsapp_router
+from portfolio import router as portfolio_router
 
 app = FastAPI(title="AZVIO API")
 
@@ -19,6 +21,8 @@ app.include_router(sanad_router, prefix="/api")
 app.include_router(google_router, prefix="/api")
 app.include_router(google_public_router, prefix="/api")
 app.include_router(user_settings_router, prefix="/api")
+app.include_router(whatsapp_router, prefix="/api")
+app.include_router(portfolio_router, prefix="/api")
 
 
 @app.get("/api/")

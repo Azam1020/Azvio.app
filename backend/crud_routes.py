@@ -83,9 +83,18 @@ async def get_client(client_id: str):
 async def update_client(client_id: str, body: ClientUpdate):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     updates["updated_at"] = now_iso()
+    prev = await db.clients.find_one({"id": client_id}, {"_id": 0, "status": 1})
     r = await db.clients.update_one({"id": client_id}, {"$set": updates})
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="العميل غير موجود")
+    # Auto-portfolio sync: if status just transitioned to "delivered", create/refresh portfolio item
+    new_status = updates.get("status")
+    if new_status == "delivered" and (not prev or prev.get("status") != "delivered"):
+        try:
+            from portfolio import create_or_update_from_client
+            await create_or_update_from_client(client_id, enhance=True)
+        except Exception as _e:  # never block client update on portfolio errors
+            pass
     return await db.clients.find_one({"id": client_id}, {"_id": 0})
 
 
