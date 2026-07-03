@@ -1,18 +1,21 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
+import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
 import { api, apiUpload } from '@/src/api';
 import { AppModal, Chips, Empty, Field, confirmAsync } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
@@ -35,9 +38,23 @@ const TX_META: Record<string, { label: string; icon: any; color: string; sign: s
 
 const SEGMENTS = [
   { key: 'overview', label: 'نظرة عامة' },
-  { key: 'subscriptions', label: 'الاشتراكات' },
-  { key: 'debts', label: 'الديون' },
+  { key: 'stats', label: 'الإحصائيات' },
+  { key: 'subscriptions', label: 'اشتراكات' },
+  { key: 'debts', label: 'ديون' },
 ];
+
+const AR_MONTHS_SHORT = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
+const monthShort = (ym: string) => {
+  const [, m] = ym.split('-').map(Number);
+  return AR_MONTHS_SHORT[(m - 1) % 12];
+};
+
+const TYPE_COLORS: Record<string, string> = {
+  income: C.success,
+  expense: C.error,
+  withdrawal: '#B8860B',
+  subscription: '#16808A',
+};
 
 const emptyForm = {
   type: 'income',
@@ -51,8 +68,11 @@ const emptyForm = {
 
 export default function FinanceScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { width } = useWindowDimensions();
   const [segment, setSegment] = useState('overview');
   const [summary, setSummary] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
   const [txs, setTxs] = useState<any[]>([]);
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,12 +80,23 @@ export default function FinanceScreen() {
   const [analyzing, setAnalyzing] = useState(false);
   const [invoiceModal, setInvoiceModal] = useState(false);
   const [invoiceError, setInvoiceError] = useState('');
+  // Bank statement
+  const [statementAnalyzing, setStatementAnalyzing] = useState(false);
+  const [statementModal, setStatementModal] = useState(false);
+  const [statementTxs, setStatementTxs] = useState<any[]>([]);
+  const [statementSelected, setStatementSelected] = useState<Record<number, boolean>>({});
+  const [statementError, setStatementError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const [s, t] = await Promise.all([api('/finance/summary'), api('/transactions')]);
+      const [s, t, st] = await Promise.all([
+        api('/finance/summary'),
+        api('/transactions'),
+        api('/finance/statistics?months=6'),
+      ]);
       setSummary(s);
       setTxs(t);
+      setStats(st);
     } catch {}
   }, []);
 
@@ -156,9 +187,102 @@ export default function FinanceScreen() {
     setSaving(false);
   };
 
+  const pickBankStatement = async () => {
+    setStatementError('');
+    const res = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'image/*'],
+      copyToCacheDirectory: true,
+    });
+    if (res.canceled || !res.assets?.length) return;
+    const asset = res.assets[0];
+    if (asset.size && asset.size > 15 * 1024 * 1024) {
+      Alert.alert('الملف كبير', 'الحد الأقصى 15MB');
+      return;
+    }
+    setStatementAnalyzing(true);
+    try {
+      const fd = new FormData();
+      if (Platform.OS === 'web' && (asset as any).file) {
+        fd.append('file', (asset as any).file, asset.name);
+      } else {
+        fd.append('file', {
+          uri: asset.uri,
+          name: asset.name || 'statement.pdf',
+          type: asset.mimeType || 'application/pdf',
+        } as any);
+      }
+      const data = await apiUpload('/finance/statement/analyze', fd);
+      const extracted: any[] = data.extracted || [];
+      setStatementTxs(extracted);
+      // pre-select all by default
+      const sel: Record<number, boolean> = {};
+      extracted.forEach((_, i) => (sel[i] = true));
+      setStatementSelected(sel);
+      setStatementModal(true);
+    } catch (e: any) {
+      setStatementError(e.message || 'تعذر تحليل الكشف');
+    }
+    setStatementAnalyzing(false);
+  };
+
+  const saveStatementTxs = async () => {
+    const chosen = statementTxs.filter((_, i) => statementSelected[i]);
+    if (chosen.length === 0) return;
+    setSaving(true);
+    try {
+      const r = await api('/finance/statement/save', {
+        method: 'POST',
+        body: JSON.stringify({ transactions: chosen }),
+      });
+      Alert.alert('تم', `تم إضافة ${r.inserted} معاملة`);
+      setStatementModal(false);
+      setStatementTxs([]);
+      setStatementSelected({});
+      load();
+    } catch (e: any) {
+      Alert.alert('خطأ', e.message || 'تعذر الحفظ');
+    }
+    setSaving(false);
+  };
+
   const subs = txs.filter((t) => t.type === 'subscription');
   const debts = txs.filter((t) => t.type === 'debt');
   const recent = txs.slice(0, 30);
+
+  const chartWidth = Math.min(width - 32 - 32, 520);
+
+  const netLineData = useMemo(() => {
+    if (!stats?.months) return [] as any[];
+    return stats.months.map((ym: string, i: number) => ({
+      value: stats.net_series[i] || 0,
+      label: monthShort(ym),
+      dataPointColor: (stats.net_series[i] || 0) >= 0 ? C.success : C.error,
+    }));
+  }, [stats]);
+
+  const incomeExpenseBars = useMemo(() => {
+    if (!stats?.months) return [] as any[];
+    const rows: any[] = [];
+    stats.months.forEach((ym: string, i: number) => {
+      rows.push({ value: stats.income_series[i] || 0, label: monthShort(ym), frontColor: C.success, spacing: 2 });
+      rows.push({ value: stats.expense_series[i] || 0, frontColor: '#E5A4A4', spacing: 14 });
+    });
+    return rows;
+  }, [stats]);
+
+  const typePieData = useMemo(() => {
+    if (!stats?.type_breakdown) return [] as any[];
+    return Object.entries(stats.type_breakdown)
+      .filter(([, v]) => (v as number) > 0)
+      .map(([k, v]) => ({ value: v as number, color: TYPE_COLORS[k] || C.muted, text: '' }));
+  }, [stats]);
+
+  const maxIE = useMemo(() => {
+    if (!stats) return 100;
+    const arr = [...(stats.income_series || []), ...(stats.expense_series || [])];
+    const m = Math.max(...arr, 100);
+    return Math.ceil(m / 100) * 100;
+  }, [stats]);
 
   const renderTx = (item: any, showPaidToggle = false) => {
     const meta = TX_META[item.type] || TX_META.expense;
@@ -254,6 +378,157 @@ export default function FinanceScreen() {
           </>
         )}
 
+        {segment === 'stats' && stats && (
+          <>
+            <View style={styles.netCard}>
+              <Text style={styles.netLabel}>الصافي الإجمالي</Text>
+              <Text style={styles.netValue}>{fmt(stats.totals.net)}</Text>
+              <View style={styles.netRow}>
+                <Text style={styles.netSub}>دخل: {fmt(stats.totals.income)}</Text>
+                <Text style={styles.netSub}>مصاريف: {fmt(stats.totals.expenses)}</Text>
+              </View>
+            </View>
+
+            {/* Income vs Expense bars */}
+            <View style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <View>
+                  <Text style={styles.chartTitle}>الدخل مقابل المصاريف</Text>
+                  <Text style={styles.chartSubtitle}>آخر 6 أشهر</Text>
+                </View>
+                <View style={styles.legendRow}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: C.success }]} />
+                    <Text style={styles.legendText}>دخل</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: '#E5A4A4' }]} />
+                    <Text style={styles.legendText}>مصاريف</Text>
+                  </View>
+                </View>
+              </View>
+              <View style={{ alignItems: 'center', marginTop: 6 }}>
+                <BarChart
+                  data={incomeExpenseBars}
+                  width={chartWidth}
+                  height={140}
+                  barWidth={12}
+                  barBorderRadius={4}
+                  noOfSections={4}
+                  maxValue={maxIE}
+                  yAxisTextStyle={{ color: C.muted, fontSize: 10, fontFamily: F.regular }}
+                  xAxisLabelTextStyle={{ color: C.onSurface2, fontSize: 10, fontFamily: F.semibold }}
+                  yAxisThickness={0}
+                  xAxisThickness={0}
+                  rulesColor={C.border}
+                  initialSpacing={10}
+                  endSpacing={10}
+                  disableScroll
+                  yAxisLabelWidth={40}
+                />
+              </View>
+            </View>
+
+            {/* Net trend line */}
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>اتجاه الصافي</Text>
+              <Text style={styles.chartSubtitle}>{stats.totals.net >= 0 ? 'رصيد موجب' : 'رصيد سالب'} • {stats.months?.length || 0} شهور</Text>
+              <View style={{ alignItems: 'center', marginTop: 8 }}>
+                <LineChart
+                  data={netLineData}
+                  width={chartWidth}
+                  height={120}
+                  color={C.brand}
+                  thickness={2.5}
+                  hideDataPoints={false}
+                  dataPointsColor={C.brand}
+                  yAxisTextStyle={{ color: C.muted, fontSize: 10, fontFamily: F.regular }}
+                  xAxisLabelTextStyle={{ color: C.onSurface2, fontSize: 10, fontFamily: F.semibold }}
+                  yAxisThickness={0}
+                  xAxisThickness={0}
+                  rulesColor={C.border}
+                  initialSpacing={10}
+                  endSpacing={10}
+                  areaChart
+                  startFillColor={C.brand}
+                  endFillColor={C.brandSoft}
+                  startOpacity={0.35}
+                  endOpacity={0.05}
+                  disableScroll
+                  yAxisLabelWidth={44}
+                />
+              </View>
+            </View>
+
+            {/* Type breakdown pie */}
+            {typePieData.length > 0 && (
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>توزيع أنواع العمليات</Text>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                  <PieChart
+                    donut
+                    data={typePieData}
+                    radius={60}
+                    innerRadius={38}
+                    centerLabelComponent={() => (
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={{ fontFamily: F.bold, fontSize: 16, color: C.onSurface }}>{fmt(stats.totals.income + stats.totals.expenses + stats.totals.subscriptions + stats.totals.withdrawals).replace(' ر.س', '')}</Text>
+                        <Text style={{ fontFamily: F.regular, fontSize: 10, color: C.muted }}>مجموع</Text>
+                      </View>
+                    )}
+                  />
+                  <View style={{ gap: 6 }}>
+                    <LegendChip color={C.success} label={`دخل ${fmt(stats.totals.income)}`} />
+                    <LegendChip color={C.error} label={`مصاريف ${fmt(stats.totals.expenses)}`} />
+                    <LegendChip color={'#B8860B'} label={`سحوبات ${fmt(stats.totals.withdrawals)}`} />
+                    <LegendChip color={'#16808A'} label={`اشتراكات ${fmt(stats.totals.subscriptions)}`} />
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Top expense categories */}
+            {stats.top_categories?.length > 0 && (
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>أكبر بنود المصاريف</Text>
+                {stats.top_categories.slice(0, 6).map((c: any, i: number) => {
+                  const max = stats.top_categories[0]?.amount || 1;
+                  const pct = Math.min(100, (c.amount / max) * 100);
+                  return (
+                    <View key={i} style={styles.catRow}>
+                      <Text style={styles.catAmt}>{fmt(c.amount)}</Text>
+                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                        <Text style={styles.catName}>{c.category}</Text>
+                        <View style={styles.catBarBg}>
+                          <View style={[styles.catBarFill, { width: `${pct}%` }]} />
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Top clients */}
+            {stats.top_clients?.length > 0 && (
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>أعلى العملاء دخلاً</Text>
+                {stats.top_clients.slice(0, 5).map((c: any, i: number) => (
+                  <View key={i} style={styles.catRow}>
+                    <Text style={styles.catAmt}>{fmt(c.amount)}</Text>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <Text style={styles.catName}>{c.client}</Text>
+                    </View>
+                    <View style={styles.rankBadge}>
+                      <Text style={styles.rankText}>{i + 1}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
+        )}
+
         {segment === 'subscriptions' && (
           <>
             <View style={styles.netCard}>
@@ -293,13 +568,24 @@ export default function FinanceScreen() {
 
       {/* Bottom actions */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10 }]}>
-        <TouchableOpacity style={styles.invoiceBtn} onPress={pickInvoice} disabled={analyzing} testID="upload-invoice-btn">
+        <TouchableOpacity style={styles.sanadFab} onPress={() => router.push('/(tabs)/sanad')} testID="finance-sanad-btn">
+          <Ionicons name="sparkles" size={18} color="#FFF" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionSm} onPress={pickBankStatement} disabled={statementAnalyzing} testID="upload-statement-btn">
+          {statementAnalyzing ? (
+            <ActivityIndicator color={C.brand} size="small" />
+          ) : (
+            <Ionicons name="reader" size={16} color={C.brand} />
+          )}
+          <Text style={styles.actionSmText}>{statementAnalyzing ? '...' : 'كشف حساب'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionSm} onPress={pickInvoice} disabled={analyzing} testID="upload-invoice-btn">
           {analyzing ? (
             <ActivityIndicator color={C.brand} size="small" />
           ) : (
-            <Ionicons name="document-text" size={18} color={C.brand} />
+            <Ionicons name="document-text" size={16} color={C.brand} />
           )}
-          <Text style={styles.invoiceText}>{analyzing ? 'جارِ التحليل...' : 'فاتورة PDF 🤖'}</Text>
+          <Text style={styles.actionSmText}>{analyzing ? '...' : 'فاتورة'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.addBtn}
@@ -310,7 +596,7 @@ export default function FinanceScreen() {
           testID="add-tx-btn"
         >
           <Ionicons name="add" size={20} color="#FFF" />
-          <Text style={styles.addText}>إضافة عملية</Text>
+          <Text style={styles.addText}>عملية</Text>
         </TouchableOpacity>
       </View>
 
@@ -361,6 +647,61 @@ export default function FinanceScreen() {
         <Field label="التصنيف" value={form.category} onChangeText={(v) => setForm({ ...form, category: v })} />
         <Field label="التاريخ" value={form.date} onChangeText={(v) => setForm({ ...form, date: v })} autoCapitalize="none" />
       </AppModal>
+
+      {/* Bank statement extraction modal */}
+      <AppModal
+        visible={statementModal}
+        title={`📄 ${statementTxs.length} معاملة مستخرجة`}
+        onClose={() => setStatementModal(false)}
+        onSave={saveStatementTxs}
+        saveLabel={`حفظ المختار (${Object.values(statementSelected).filter(Boolean).length})`}
+        saving={saving}
+      >
+        <View style={styles.privacyRow}>
+          <Ionicons name="shield-checkmark" size={16} color={C.success} />
+          <Text style={styles.privacyText}>الخصوصية: تم حذف ملف الكشف من الخادم فور التحليل.</Text>
+        </View>
+        <Text style={styles.invoiceHint}>اختر المعاملات التي تريد إضافتها لماليتك:</Text>
+        {statementTxs.length === 0 && (
+          <Text style={styles.emptyStmt}>لم يستخرج سند أي معاملات — قد يكون الملف غير واضح أو فارغ.</Text>
+        )}
+        {statementTxs.map((t, i) => {
+          const meta = TX_META[t.type] || TX_META.expense;
+          const selected = !!statementSelected[i];
+          return (
+            <TouchableOpacity
+              key={i}
+              style={[styles.stmtRow, selected && styles.stmtRowActive]}
+              onPress={() => setStatementSelected({ ...statementSelected, [i]: !selected })}
+              testID={`stmt-tx-${i}`}
+            >
+              <Ionicons
+                name={selected ? 'checkbox' : 'square-outline'}
+                size={22}
+                color={selected ? C.brand : C.muted}
+              />
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={styles.stmtDesc} numberOfLines={1}>{t.description || meta.label}</Text>
+                <Text style={styles.stmtMeta}>{meta.label} • {t.date}{t.category ? ` • ${t.category}` : ''}</Text>
+              </View>
+              <Text style={[styles.stmtAmt, { color: meta.color }]}>
+                {meta.sign}{fmt(t.amount)}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </AppModal>
+
+      {!!statementError && <Text style={styles.invoiceError}>{statementError}</Text>}
+    </View>
+  );
+}
+
+function LegendChip({ color, label }: { color: string; label: string }) {
+  return (
+    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />
+      <Text style={{ fontFamily: F.semibold, fontSize: 11, color: C.onSurface2 }}>{label}</Text>
     </View>
   );
 }
@@ -438,8 +779,93 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     minHeight: 48,
   },
+  actionSm: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: C.brandSoft,
+    borderRadius: R.md,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    minHeight: 46,
+    minWidth: 78,
+  },
+  actionSmText: { fontFamily: F.bold, fontSize: 11, color: C.brand },
+  sanadFab: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: C.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: C.brand,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 5,
+  },
   invoiceText: { fontFamily: F.bold, fontSize: 14, color: C.brand },
   invoiceError: { fontFamily: F.regular, fontSize: 13, color: C.error, textAlign: 'center', marginTop: 8 },
   invoiceHint: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'right', marginBottom: 12 },
   fieldLabel: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, marginBottom: 6, textAlign: 'right' },
+  chartCard: {
+    backgroundColor: C.surface,
+    borderRadius: R.lg,
+    padding: 16,
+    marginBottom: 12,
+    ...shadow,
+  },
+  chartHeader: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
+  chartTitle: { fontFamily: F.bold, fontSize: 14, color: C.onSurface, textAlign: 'right' },
+  chartSubtitle: { fontFamily: F.regular, fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 2 },
+  legendRow: { flexDirection: 'row-reverse', gap: 10 },
+  legendItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontFamily: F.semibold, fontSize: 11, color: C.onSurface2 },
+  catRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: C.border,
+  },
+  catAmt: { fontFamily: F.bold, fontSize: 13, color: C.onSurface, minWidth: 90, textAlign: 'left' },
+  catName: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface, marginBottom: 4 },
+  catBarBg: { width: '100%', height: 6, backgroundColor: C.surface2, borderRadius: 3, overflow: 'hidden' },
+  catBarFill: { height: 6, backgroundColor: C.brand, borderRadius: 3 },
+  rankBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: C.brandSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankText: { fontFamily: F.bold, fontSize: 11, color: C.brand },
+  privacyRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E9F9EE',
+    padding: 10,
+    borderRadius: R.md,
+    marginBottom: 12,
+  },
+  privacyText: { fontFamily: F.semibold, fontSize: 11, color: C.success, flex: 1, textAlign: 'right' },
+  emptyStmt: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'center', paddingVertical: 12 },
+  stmtRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginBottom: 4,
+    borderRadius: R.sm,
+  },
+  stmtRowActive: { backgroundColor: C.brandSoft },
+  stmtDesc: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface },
+  stmtMeta: { fontFamily: F.regular, fontSize: 10, color: C.muted, marginTop: 2 },
+  stmtAmt: { fontFamily: F.bold, fontSize: 13 },
 });

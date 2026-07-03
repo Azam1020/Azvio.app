@@ -512,7 +512,9 @@ class SuggestServicesReq(BaseModel):
 async def suggest_services(body: SuggestServicesReq):
     existing = await db.services.find({"service_type": body.service_type}, {"_id": 0, "title": 1}).to_list(50)
     existing_titles = [s["title"] for s in existing]
-    stype_label = {"drone": "التصوير الجوي بالدرون", "editing": "مونتاج الفيديو"}.get(body.service_type, body.service_type)
+    # Try to get service_type label from db
+    st_doc = await db.service_types.find_one({"key": body.service_type}, {"_id": 0}) or {}
+    stype_label = st_doc.get("label") or {"drone": "التصوير الجوي بالدرون", "editing": "مونتاج الفيديو"}.get(body.service_type, body.service_type)
     system = (
         "أنت سند، خبير خدمات التصوير والمونتاج في السوق السعودي. "
         "تقترح خدمات إضافية جذّابة قابلة للبيع، بالعربية، مع أسعار سوقية واقعية. أعطِ الرد كـ JSON فقط."
@@ -542,6 +544,299 @@ async def suggest_services(body: SuggestServicesReq):
             "service_type": body.service_type,
         })
     return {"services": out}
+
+
+# ============ Explain a service type ============
+
+class ExplainServiceTypeReq(BaseModel):
+    key: str
+    label: str
+
+
+@router.post("/sanad/explain-service-type")
+async def explain_service_type(body: ExplainServiceTypeReq):
+    """Sanad explains what a service type means, gives target market and starting price range."""
+    system = (
+        "أنت سند، خبير سوق التصوير والإنتاج المرئي في السعودية. "
+        "تعطي شرحاً واضحاً وموجزاً لنوع خدمة يذكرها المستخدم، مع نصائح لبدء تقديمها. أعطِ الرد كـ JSON فقط."
+    )
+    user = (
+        f"اشرح نوع الخدمة التالي بالتفصيل بالعربية:\n"
+        f"- المفتاح: {body.key}\n- الاسم: {body.label}\n"
+        "أعد JSON: {\"description\":\"شرح مختصر (سطرين-ثلاثة)\","
+        "\"target_audience\":\"الجمهور المستهدف\","
+        "\"typical_price_from\":0,\"typical_price_to\":0,"
+        "\"tips\":[\"نصيحة 1\",\"نصيحة 2\",\"نصيحة 3\"]}"
+    )
+    text = await _sanad_ask(system, user)
+    data = _parse_json_block(text) or {}
+    return {
+        "description": (data.get("description") or "").strip(),
+        "target_audience": (data.get("target_audience") or "").strip(),
+        "typical_price_from": float(data.get("typical_price_from") or 0),
+        "typical_price_to": float(data.get("typical_price_to") or 0),
+        "tips": [t for t in (data.get("tips") or []) if isinstance(t, str)][:5],
+    }
+
+
+# ============ Pricing Advice (compare my pricing vs market) ============
+
+class PricingAdviceReq(BaseModel):
+    service_type: str = ""
+    sub_category: str = ""
+
+
+@router.post("/sanad/pricing-advice")
+async def pricing_advice(body: PricingAdviceReq):
+    """Gets Sanad's advice on user's own pricing list vs current market prices."""
+    q = {}
+    if body.service_type:
+        q["service_type"] = body.service_type
+    if body.sub_category:
+        q["sub_category"] = body.sub_category
+    my_prices = await db.my_pricing.find(q, {"_id": 0}).to_list(200)
+
+    if not my_prices:
+        return {"advice": "لم تُضف بعد أي تسعيرة خاصة بك. أضف بعض التسعيرات ليتمكن سند من مقارنتها بالسوق.", "items": []}
+
+    # Build compact context
+    items_ctx = "\n".join(
+        f"- {p.get('label', '')} ({p.get('service_type', '')}"
+        + (f" / {p.get('sub_category', '')}" if p.get('sub_category') else "")
+        + f"): من {p.get('price_from', 0)} إلى {p.get('price_to', 0)} ر.س"
+        + (f" — ملاحظة: {p.get('notes', '')}" if p.get("notes") else "")
+        for p in my_prices
+    )
+
+    system = (
+        "أنت سند، خبير تسعير خدمات التصوير الجوي والمونتاج في السوق السعودي. "
+        "تقارن تسعيرات المستخدم بالسوق الفعلي وتعطي نصائح عملية بالعربية. أعطِ الرد كـ JSON فقط."
+    )
+    user = (
+        f"هذه تسعيرات المستخدم الحالية:\n{items_ctx}\n\n"
+        "لكل بند: قدّر نطاق السوق السعودي الحالي وقارنه بتسعيرة المستخدم. "
+        "أعد JSON: {\"advice\":\"ملخص عام في 2-3 أسطر\","
+        "\"items\":[{\"label\":\"مطابق للاسم أعلاه\",\"market_min\":0,\"market_max\":0,\"verdict\":\"low|fair|high\",\"note\":\"جملة قصيرة\"},...]}"
+    )
+    text = await _sanad_ask(system, user, model=("gemini", "gemini-3.1-pro-preview"))
+    data = _parse_json_block(text) or {}
+    return {
+        "advice": (data.get("advice") or "").strip(),
+        "items": [
+            {
+                "label": (it.get("label") or "").strip(),
+                "market_min": float(it.get("market_min") or 0),
+                "market_max": float(it.get("market_max") or 0),
+                "verdict": it.get("verdict") or "unknown",
+                "note": (it.get("note") or "").strip(),
+            }
+            for it in (data.get("items") or [])
+            if isinstance(it, dict)
+        ],
+    }
+
+
+# ============ Weekly Insights (كل سبت) ============
+
+@router.get("/insights/weekly")
+async def weekly_insights():
+    """Generates weekly insights for the past 7 days: performance, wins, alerts, next-week focus."""
+    now = datetime.now(timezone.utc)
+    # Simple past-7-days filter
+    from datetime import timedelta
+    seven_days_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
+
+    txs = await db.transactions.find({"date": {"$gte": seven_days_ago, "$lte": today}}, {"_id": 0}).to_list(2000)
+    week_income = sum(t["amount"] for t in txs if t["type"] == "income")
+    week_expense = sum(t["amount"] for t in txs if t["type"] in ("expense", "subscription"))
+    week_income_count = sum(1 for t in txs if t["type"] == "income")
+
+    # Previous week for comparison
+    fourteen_days_ago = (now - timedelta(days=14)).strftime("%Y-%m-%d")
+    txs_prev = await db.transactions.find({"date": {"$gte": fourteen_days_ago, "$lt": seven_days_ago}}, {"_id": 0}).to_list(2000)
+    prev_income = sum(t["amount"] for t in txs_prev if t["type"] == "income")
+    prev_expense = sum(t["amount"] for t in txs_prev if t["type"] in ("expense", "subscription"))
+
+    # Client changes
+    clients_all = await db.clients.find({}, {"_id": 0}).to_list(5000)
+    new_clients_week = sum(1 for c in clients_all if (c.get("created_at") or "")[:10] >= seven_days_ago)
+    delivered_week = sum(1 for c in clients_all if c.get("status") == "delivered" and (c.get("updated_at") or "")[:10] >= seven_days_ago)
+    in_progress = sum(1 for c in clients_all if c.get("status") == "in_progress")
+
+    # Upcoming events next 7 days
+    next_7 = (now + timedelta(days=7)).strftime("%Y-%m-%d")
+    events = await db.events.find({"date": {"$gte": today, "$lte": next_7}}, {"_id": 0}).sort("date", 1).to_list(20)
+
+    # Content this week
+    content_added = await db.content.count_documents({"created_at": {"$gte": seven_days_ago}})
+    content_published = await db.content.count_documents({"stage": "published", "updated_at": {"$gte": seven_days_ago}})
+
+    stats = {
+        "week_start": seven_days_ago,
+        "week_end": today,
+        "income": week_income,
+        "expense": week_expense,
+        "net": week_income - week_expense,
+        "income_transactions": week_income_count,
+        "prev_income": prev_income,
+        "prev_expense": prev_expense,
+        "income_change_pct": ((week_income - prev_income) / prev_income * 100) if prev_income > 0 else 0,
+        "new_clients": new_clients_week,
+        "delivered_clients": delivered_week,
+        "in_progress_clients": in_progress,
+        "upcoming_events": events,
+        "content_added": content_added,
+        "content_published": content_published,
+    }
+
+    # Ask Sanad for personalized advice
+    ctx = (
+        f"إحصائيات أسبوعك (من {seven_days_ago} إلى {today}):\n"
+        f"- دخل الأسبوع: {week_income} ر.س من {week_income_count} معاملة\n"
+        f"- مصاريف الأسبوع: {week_expense} ر.س\n"
+        f"- صافي الأسبوع: {week_income - week_expense} ر.س\n"
+        f"- الأسبوع السابق: دخل {prev_income} / مصاريف {prev_expense}\n"
+        f"- عملاء جدد: {new_clients_week} — تم التسليم: {delivered_week} — قيد التنفيذ: {in_progress}\n"
+        f"- محتوى مضاف: {content_added} — منشور: {content_published}\n"
+        f"- مواعيد قادمة الأسبوع القادم: {len(events)}\n"
+    )
+    system = (
+        "أنت سند، شريك المستخدم في إدارة أعمال التصوير. "
+        "تقدّم تقريراً أسبوعياً قصيراً وتحفيزياً ومركّزاً بالعربية. أعطِ الرد كـ JSON فقط."
+    )
+    user = (
+        ctx + "\n"
+        "أعد JSON: {\"headline\":\"جملة ملخّصة قصيرة\","
+        "\"wins\":[\"إنجاز 1\",\"إنجاز 2\"],"
+        "\"alerts\":[\"تنبيه أو انتباه\"],"
+        "\"focus_next_week\":[\"أولوية 1\",\"أولوية 2\",\"أولوية 3\"]}"
+    )
+    try:
+        text = await _sanad_ask(system, user)
+        insights = _parse_json_block(text) or {}
+    except Exception:
+        insights = {}
+
+    return {
+        "stats": stats,
+        "insights": {
+            "headline": (insights.get("headline") or "").strip(),
+            "wins": [w for w in (insights.get("wins") or []) if isinstance(w, str)][:5],
+            "alerts": [a for a in (insights.get("alerts") or []) if isinstance(a, str)][:5],
+            "focus_next_week": [f for f in (insights.get("focus_next_week") or []) if isinstance(f, str)][:5],
+        },
+    }
+
+
+# ============ Bank Statement Analysis ============
+
+BANK_STATEMENT_PROMPT = """استخرج جميع المعاملات المالية من هذا الكشف بدقة وأجب بصيغة JSON فقط:
+{"transactions":[
+  {"type":"income|expense|withdrawal","amount":0,"date":"YYYY-MM-DD","description":"وصف مختصر بالعربية","category":"تصنيف مختصر بالعربية","client_name":"اسم العميل إن وجد أو فارغ"},
+  ...
+]}
+
+قواعد صارمة:
+- type: income للمبالغ الواردة، expense للمبالغ الخارجة (باستثناء سحوبات نقدية)، withdrawal للسحوبات النقدية فقط
+- amount: القيمة المطلقة الموجبة فقط (لا سالب)
+- date: YYYY-MM-DD (استنتج السنة من رأس الكشف إن لم تظهر في السطر)
+- description: وصف قصير من الوصف الأصلي
+- category: اقترح تصنيفاً مناسباً (مثال: راتب، معدات، اشتراكات، مواصلات، طعام، عميل درون، عميل مونتاج)
+- client_name: استخرجه إذا كان الوصف يشير لعميل محدد
+- تجاهل الأرصدة والرسوم البنكية الصغيرة والاعتمادات الإدارية"""
+
+
+@router.post("/finance/statement/analyze")
+async def analyze_bank_statement(file: UploadFile = File(...)):
+    """Analyze bank statement PDF and extract transactions. File is auto-deleted after processing (privacy)."""
+    path, mime = await _save_upload(file)
+    try:
+        chat = LlmChat(
+            api_key=LLM_KEY,
+            session_id=f"stmt-{uuid.uuid4().hex[:10]}",
+            system_message=(
+                "أنت خبير في قراءة كشوف الحسابات البنكية السعودية واستخراج المعاملات بدقة عالية. "
+                "تجيب دائماً بصيغة JSON فقط. لا تُدرج معاملات مكررة."
+            ),
+        ).with_model("gemini", "gemini-3.1-pro-preview")
+        resp = await chat.send_message(
+            UserMessage(text=BANK_STATEMENT_PROMPT, file_contents=[FileContentWithMimeType(file_path=path, mime_type=mime)])
+        )
+        text = resp if isinstance(resp, str) else (getattr(resp, "text", None) or str(resp))
+    except Exception as e:
+        # Ensure file deletion even on error (privacy)
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"تعذر تحليل الكشف: {e}")
+    finally:
+        # Auto-delete file (privacy) - success or fail
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+
+    data = _parse_json_block(text) or {}
+    txs = data.get("transactions") if isinstance(data, dict) else data
+    if not isinstance(txs, list):
+        txs = []
+
+    # Clean and validate
+    out = []
+    for t in txs:
+        if not isinstance(t, dict):
+            continue
+        amt = float(t.get("amount") or 0)
+        if amt <= 0:
+            continue
+        ttype = t.get("type") or "expense"
+        if ttype not in ("income", "expense", "withdrawal"):
+            ttype = "expense"
+        out.append({
+            "type": ttype,
+            "amount": amt,
+            "date": (t.get("date") or today_str())[:10],
+            "description": (t.get("description") or "").strip()[:200],
+            "category": (t.get("category") or "").strip()[:80],
+            "client_name": (t.get("client_name") or "").strip()[:100],
+        })
+    return {"extracted": out, "count": len(out)}
+
+
+class StatementSaveReq(BaseModel):
+    transactions: list = []
+
+
+@router.post("/finance/statement/save")
+async def save_bank_statement_transactions(body: StatementSaveReq):
+    """Save selected transactions extracted from a bank statement."""
+    if not body.transactions:
+        return {"inserted": 0}
+    docs = []
+    for t in body.transactions:
+        if not isinstance(t, dict):
+            continue
+        amt = float(t.get("amount") or 0)
+        if amt <= 0:
+            continue
+        docs.append({
+            "id": uuid.uuid4().hex,
+            "type": t.get("type") or "expense",
+            "amount": amt,
+            "description": (t.get("description") or "").strip()[:200],
+            "category": (t.get("category") or "").strip()[:80],
+            "date": (t.get("date") or today_str())[:10],
+            "client_name": (t.get("client_name") or "").strip()[:100],
+            "debt_direction": "owed_to_me",
+            "paid": False,
+            "source": "bank_statement",
+            "created_at": now_iso(),
+        })
+    if docs:
+        await db.transactions.insert_many(docs)
+    return {"inserted": len(docs)}
 
 
 # ============ Invoice analysis (Finance module) ============

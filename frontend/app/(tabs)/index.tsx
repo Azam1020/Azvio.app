@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -94,6 +95,29 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [widgets, setWidgets] = useState<Record<WidgetKey, boolean>>(DEFAULT_WIDGETS);
+  const [installAvailable, setInstallAvailable] = useState(false);
+
+  // Listen for PWA install prompt (web only)
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const g = globalThis as any;
+    if (g.__azvioInstallPrompt) setInstallAvailable(true);
+    const onAvail = () => setInstallAvailable(true);
+    g.addEventListener?.('azvio-install-available', onAvail);
+    return () => g.removeEventListener?.('azvio-install-available', onAvail);
+  }, []);
+
+  const doInstall = async () => {
+    const g = globalThis as any;
+    const p = g.__azvioInstallPrompt;
+    if (!p) return;
+    p.prompt();
+    try {
+      await p.userChoice;
+    } catch {}
+    g.__azvioInstallPrompt = null;
+    setInstallAvailable(false);
+  };
 
   // Load widget prefs
   useEffect(() => {
@@ -143,7 +167,9 @@ export default function Dashboard() {
     { title: 'المحتوى', sub: `${contentTotal} عنصر`, icon: 'film' as const, href: '/content' },
     { title: 'التقويم', sub: 'مواعيد التصوير والتسليم', icon: 'calendar' as const, href: '/calendar' },
     { title: 'خدماتي', sub: 'درون ومونتاج', icon: 'briefcase' as const, href: '/services' },
-    { title: 'روابط سريعة', sub: 'رائد + الموقع', icon: 'link' as const, href: '/links' },
+    { title: 'تسعيرتي', sub: 'أسعارك مقابل السوق', icon: 'pricetags' as const, href: '/pricing' },
+    { title: 'رؤى الأسبوع', sub: 'تقرير سند الأسبوعي', icon: 'analytics' as const, href: '/insights' },
+    { title: 'روابط سريعة', sub: 'روابطك اليومية', icon: 'link' as const, href: '/links' },
   ];
 
   // Chart data prep
@@ -201,6 +227,15 @@ export default function Dashboard() {
           >
             <Ionicons name="options-outline" size={20} color={C.onSurface2} />
           </TouchableOpacity>
+          {installAvailable && (
+            <TouchableOpacity
+              style={[styles.headerBtn, { backgroundColor: C.brandSoft }]}
+              onPress={doInstall}
+              testID="install-pwa-btn"
+            >
+              <Ionicons name="download-outline" size={20} color={C.brand} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.headerBtn} onPress={handleLogout} testID="logout-btn">
             <Ionicons name="log-out-outline" size={20} color={C.onSurface2} />
           </TouchableOpacity>

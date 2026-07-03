@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
-    "version": "1.0.0",
+    "name": "AZVIO",
+    "slug": "azvio",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "frontend",
@@ -23,7 +23,16 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "AZVIO",
+      "shortName": "AZVIO",
+      "description": "إدارة أعمال التصوير الجوي والمونتاج مع سند AI",
+      "backgroundColor": "#FFFFFF",
+      "themeColor": "#3E9194",
+      "display": "standalone",
+      "orientation": "portrait",
+      "lang": "ar",
+      "startUrl": "/"
     },
     "plugins": [
       "expo-router",

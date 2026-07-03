@@ -364,6 +364,213 @@ async def delete_service(service_id: str):
     return {"ok": True}
 
 
+# ============ Custom Service Types (parent categories) ============
+
+class ServiceTypeCreate(BaseModel):
+    key: str  # unique short id e.g. "photography"
+    label: str  # display name in Arabic
+    description: str = ""  # brief description
+    icon: str = "briefcase-outline"
+
+
+class ServiceTypeUpdate(BaseModel):
+    label: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+
+
+@router.get("/service-types")
+async def list_service_types():
+    return await db.service_types.find({}, {"_id": 0}).sort("created_at", 1).to_list(200)
+
+
+@router.post("/service-types")
+async def create_service_type(body: ServiceTypeCreate):
+    key = body.key.strip().lower()
+    if not key:
+        raise HTTPException(status_code=400, detail="مفتاح النوع مطلوب")
+    existing = await db.service_types.find_one({"key": key})
+    if existing:
+        raise HTTPException(status_code=400, detail="نوع الخدمة موجود مسبقاً")
+    doc = {
+        "id": new_id(),
+        "key": key,
+        "label": body.label.strip(),
+        "description": body.description.strip(),
+        "icon": body.icon,
+        "is_default": False,
+        "created_at": now_iso(),
+    }
+    await db.service_types.insert_one(dict(doc))
+    return doc
+
+
+@router.put("/service-types/{type_id}")
+async def update_service_type(type_id: str, body: ServiceTypeUpdate):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    r = await db.service_types.update_one({"id": type_id}, {"$set": updates})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="نوع الخدمة غير موجود")
+    return await db.service_types.find_one({"id": type_id}, {"_id": 0})
+
+
+@router.delete("/service-types/{type_id}")
+async def delete_service_type(type_id: str):
+    doc = await db.service_types.find_one({"id": type_id}, {"_id": 0})
+    if doc and doc.get("is_default"):
+        raise HTTPException(status_code=400, detail="لا يمكن حذف الأنواع الافتراضية")
+    await db.service_types.delete_one({"id": type_id})
+    return {"ok": True}
+
+
+# ============ My Pricing (personal price knowledge base) ============
+
+class MyPricingCreate(BaseModel):
+    service_type: str  # drone | editing | custom key
+    sub_category: str = ""  # optional category
+    label: str  # what this pricing is for (e.g. "فيلا كبيرة", "مونتاج 60 ثانية")
+    price_from: float = 0
+    price_to: float = 0
+    notes: str = ""  # extra context for Sanad
+
+
+class MyPricingUpdate(BaseModel):
+    service_type: Optional[str] = None
+    sub_category: Optional[str] = None
+    label: Optional[str] = None
+    price_from: Optional[float] = None
+    price_to: Optional[float] = None
+    notes: Optional[str] = None
+
+
+@router.get("/my-pricing")
+async def list_my_pricing(service_type: str = ""):
+    q = {"service_type": service_type} if service_type else {}
+    return await db.my_pricing.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@router.post("/my-pricing")
+async def create_my_pricing(body: MyPricingCreate):
+    doc = body.model_dump()
+    doc.update({"id": new_id(), "created_at": now_iso(), "updated_at": now_iso()})
+    await db.my_pricing.insert_one(dict(doc))
+    return doc
+
+
+@router.put("/my-pricing/{price_id}")
+async def update_my_pricing(price_id: str, body: MyPricingUpdate):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    updates["updated_at"] = now_iso()
+    r = await db.my_pricing.update_one({"id": price_id}, {"$set": updates})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="التسعيرة غير موجودة")
+    return await db.my_pricing.find_one({"id": price_id}, {"_id": 0})
+
+
+@router.delete("/my-pricing/{price_id}")
+async def delete_my_pricing(price_id: str):
+    await db.my_pricing.delete_one({"id": price_id})
+    return {"ok": True}
+
+
+# ============ Finance Statistics (detailed) ============
+
+@router.get("/finance/statistics")
+async def finance_statistics(months: int = 6):
+    """Detailed statistics for the finance screen: totals, by-category expenses, income by client, monthly trends."""
+    now = datetime.now(timezone.utc)
+    ym_list = []
+    for i in range(months - 1, -1, -1):
+        y = now.year
+        m = now.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        ym_list.append(f"{y:04d}-{m:02d}")
+
+    txs = await db.transactions.find({}, {"_id": 0}).to_list(20000)
+    month = now.strftime("%Y-%m")
+
+    # Totals
+    total_income = sum(t["amount"] for t in txs if t["type"] == "income")
+    total_expenses = sum(t["amount"] for t in txs if t["type"] == "expense")
+    total_withdrawals = sum(t["amount"] for t in txs if t["type"] == "withdrawal")
+    total_subs = sum(t["amount"] for t in txs if t["type"] == "subscription")
+    month_income = sum(t["amount"] for t in txs if t["type"] == "income" and (t.get("date") or "").startswith(month))
+    month_expenses = sum(t["amount"] for t in txs if t["type"] in ("expense", "subscription") and (t.get("date") or "").startswith(month))
+    debts_to_me = sum(t["amount"] for t in txs if t["type"] == "debt" and t.get("debt_direction") == "owed_to_me" and not t.get("paid"))
+    debts_i_owe = sum(t["amount"] for t in txs if t["type"] == "debt" and t.get("debt_direction") == "i_owe" and not t.get("paid"))
+
+    # Monthly time series
+    income_series = {ym: 0.0 for ym in ym_list}
+    expense_series = {ym: 0.0 for ym in ym_list}
+    net_series = {ym: 0.0 for ym in ym_list}
+    for t in txs:
+        ym = (t.get("date") or "")[:7]
+        if ym not in income_series:
+            continue
+        amt = float(t.get("amount") or 0)
+        if t["type"] == "income":
+            income_series[ym] += amt
+            net_series[ym] += amt
+        elif t["type"] in ("expense", "subscription"):
+            expense_series[ym] += amt
+            net_series[ym] -= amt
+        elif t["type"] == "withdrawal":
+            net_series[ym] -= amt
+
+    # Expenses by category
+    cat_map = {}
+    for t in txs:
+        if t["type"] in ("expense", "subscription"):
+            cat = t.get("category") or "بدون تصنيف"
+            cat_map[cat] = cat_map.get(cat, 0) + float(t.get("amount") or 0)
+    top_categories = sorted(
+        [{"category": k, "amount": v} for k, v in cat_map.items()],
+        key=lambda x: x["amount"], reverse=True
+    )[:8]
+
+    # Income by client (top earners)
+    client_map = {}
+    for t in txs:
+        if t["type"] == "income":
+            name = t.get("client_name") or "بدون اسم"
+            client_map[name] = client_map.get(name, 0) + float(t.get("amount") or 0)
+    top_clients = sorted(
+        [{"client": k, "amount": v} for k, v in client_map.items()],
+        key=lambda x: x["amount"], reverse=True
+    )[:6]
+
+    # Transaction type breakdown (for pie chart)
+    type_breakdown = {
+        "income": total_income,
+        "expense": total_expenses,
+        "withdrawal": total_withdrawals,
+        "subscription": total_subs,
+    }
+
+    return {
+        "totals": {
+            "income": total_income,
+            "expenses": total_expenses,
+            "withdrawals": total_withdrawals,
+            "subscriptions": total_subs,
+            "net": total_income - total_expenses - total_withdrawals - total_subs,
+            "month_income": month_income,
+            "month_expenses": month_expenses,
+            "debts_to_me": debts_to_me,
+            "debts_i_owe": debts_i_owe,
+        },
+        "months": ym_list,
+        "income_series": [income_series[ym] for ym in ym_list],
+        "expense_series": [expense_series[ym] for ym in ym_list],
+        "net_series": [net_series[ym] for ym in ym_list],
+        "top_categories": top_categories,
+        "top_clients": top_clients,
+        "type_breakdown": type_breakdown,
+    }
+
+
 # ============ Quick Links ============
 
 class LinkCreate(BaseModel):
@@ -383,6 +590,21 @@ async def create_link(body: LinkCreate):
     doc.update({"id": new_id(), "created_at": now_iso()})
     await db.quick_links.insert_one(dict(doc))
     return doc
+
+
+class LinkUpdate(BaseModel):
+    title: Optional[str] = None
+    url: Optional[str] = None
+    icon: Optional[str] = None
+
+
+@router.put("/links/{link_id}")
+async def update_link(link_id: str, body: LinkUpdate):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    r = await db.quick_links.update_one({"id": link_id}, {"$set": updates})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="الرابط غير موجود")
+    return await db.quick_links.find_one({"id": link_id}, {"_id": 0})
 
 
 @router.delete("/links/{link_id}")
@@ -543,4 +765,25 @@ async def seed_defaults():
                 "created_at": now_iso(),
             }
             for (n, st, desc) in default_cats
+        ])
+    if await db.service_types.count_documents({}) == 0:
+        await db.service_types.insert_many([
+            {
+                "id": new_id(),
+                "key": "drone",
+                "label": "التصوير الجوي بالدرون",
+                "description": "تصوير فيديو وصور جوية للمشاريع والفعاليات",
+                "icon": "airplane",
+                "is_default": True,
+                "created_at": now_iso(),
+            },
+            {
+                "id": new_id(),
+                "key": "editing",
+                "label": "مونتاج الفيديو",
+                "description": "مونتاج وتلوين ومؤثرات وموشن جرافيك",
+                "icon": "cut",
+                "is_default": True,
+                "created_at": now_iso(),
+            },
         ])

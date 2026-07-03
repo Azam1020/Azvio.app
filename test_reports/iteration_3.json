@@ -1,0 +1,52 @@
+{
+  "summary": "Phase B backend testing complete — 37/38 pytest tests PASSED (60s) covering all new endpoints requested. (1) Service Types CRUD — 2 defaults (drone+editing) present with is_default=true; POST creates custom type, duplicate key returns 400, PUT updates label, DELETE of default is blocked (400), DELETE of custom succeeds. (2) My Pricing CRUD — POST/GET/filter-by-service_type/PUT/DELETE all work; sub_category and notes persist. (3) Sanad AI new endpoints — /sanad/pricing-advice with empty DB returns the Arabic placeholder 'لم تُضف بعد أي تسعيرة'; after adding 2 drone pricing rows, returns non-empty {advice, items:[{label,market_min,market_max,verdict,note}]} with verdict∈{low,fair,high}. /sanad/explain-service-type returns non-empty {description, target_audience, typical_price_from, typical_price_to, tips[]}. (4) Weekly Insights — /insights/weekly returns {stats, insights} with week_start/week_end in YYYY-MM-DD, income/expense/net/new_clients/delivered_clients/in_progress_clients/content_added/content_published/prev_income/prev_expense/income_transactions present; insights={headline, wins[], alerts[], focus_next_week[]} non-empty. (5) Finance Statistics — /finance/statistics?months=6 returns {totals:{income,expenses,withdrawals,subscriptions,net,month_income,month_expenses,debts_to_me,debts_i_owe}, months(6), income_series(6), expense_series(6), net_series(6), top_categories, top_clients, type_breakdown}. Added income+expense tx → totals.income delta = +1234 exactly, expense delta = +234 exactly, and top_categories/top_clients contain the new entries. (6) Bank Statement — POST /finance/statement/analyze with a minimal PDF: file successfully auto-deleted from /tmp/azvio_uploads after processing (verified before/after directory listing); /finance/statement/save with 1 income tx returns {inserted:1} and tx appears in GET /transactions; empty body returns {inserted:0}. (7) Links PUT — new endpoint works: POST, PUT (title), DELETE all 200. (8) Regression — /categories /clients /transactions /content /events /dashboard /dashboard/timeseries all 200; /sanad/price-opinion, /sanad/suggest-services, /sanad/suggest-categories still return valid non-empty payloads; /sanad/chat action protocol with 'أضف فئة تصوير مطاعم للدرون' correctly persists a new category with source='sanad'. All test data cleaned up (verified: 0 TEST_ residues in my_pricing, service_types, transactions, quick_links, categories, clients).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /links",
+        "issue": "Seed defaults for quick_links only insert when count==0. The DB was previously seeded with 4 old links (Google Drive, لوحة Netlify, موقع AZVIO الرئيسي, لوحة Supabase) from an earlier iteration, so the new 2-link default (منصة رائد + موقع AZVIO) never gets applied. Assertion for the two new default titles failed. All CRUD operations (POST/PUT/DELETE) work correctly — only the initial seed data is stale."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase_b.py",
+    "/app/test_reports/pytest/pytest_phase_b.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: If the requirement is 'exactly 2 quick_links (منصة رائد + موقع AZVIO) after fresh seed', the main agent should either (a) run a one-time migration deleting the 4 old defaults and re-seeding, or (b) change seed_defaults() to upsert per title instead of skipping when count>0. Current behavior is safe for existing users (their manual data preserved) but doesn't match the 'fresh seed → 2 defaults' contract on this pre-seeded DB.",
+    "OPTIONAL hardening: /service-types POST does not enforce non-empty label — sending label='' would create a type with an empty display name. Consider min_length=1.",
+    "OPTIONAL hardening: /my-pricing POST has no dedupe on (service_type, label) — duplicates possible. Not critical since users can delete.",
+    "OPTIONAL: /finance/statement/analyze on a minimal/blank PDF may return 500 from the LLM (couldn't extract JSON). The endpoint DOES correctly auto-delete the file in both success and failure paths (verified). Consider returning {extracted:[], count:0} instead of 500 when the LLM produces no parseable JSON — more graceful UX."
+  ],
+  "critical_code_review_comments": [
+    "sanad.py analyze_bank_statement: file deletion uses try/os.remove in both except and finally — good defense-in-depth for privacy. Verified: /tmp/azvio_uploads has no leftover files after test uploads.",
+    "sanad.py weekly_insights: LLM call is wrapped in try/except so the endpoint always returns stats even if the LLM fails — good graceful degradation.",
+    "crud_routes.py service_types.delete: correctly blocks is_default=True — verified 400 response and record still present after attempt.",
+    "crud_routes.py my_pricing: no ownership scoping (single-user app, OK) but pattern is consistent with other collections.",
+    "crud_routes.py finance/statistics: net_series subtracts subscriptions from net but type_breakdown lists them separately — consistent. income_series/expense_series lengths match months count exactly (verified for months=6).",
+    "sanad.py pricing-advice: correctly short-circuits with Arabic placeholder message + empty items when my_pricing is empty — no wasted LLM call.",
+    "sanad.py explain-service-type + pricing-advice + weekly_insights all use _parse_json_block which relies on a greedy {.*} regex — same fragility flagged in iteration 2. In practice all 3 tests parsed cleanly on Gemini responses.",
+    "crud_routes.py now 790 lines — approaching the 700 threshold. Consider splitting into modules (clients.py, categories.py, service_types.py, finance.py, links.py) in a future refactor.",
+    "All new routes still under APIRouter(dependencies=[Depends(get_current_user)]) — auth enforced. Verified no unauth bypass paths.",
+    "All responses continue to exclude Mongo _id via projection {'_id': 0}."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase_b.py (created — 38 tests for Phase B new features)"
+  ],
+  "success_rate": {
+    "backend": "97% (37/38)",
+    "frontend": "not tested this iteration"
+  },
+  "seed_data_creation": "All test data created during this run was cleaned up. Post-run inspection: my_pricing=0, service_types=2 (defaults only), transactions=2 (pre-existing, not TEST_), quick_links=4 (pre-existing old defaults, not TEST_), categories=8 (7 seeded + 1 pre-existing non-TEST leftover), clients=1 (pre-existing). Zero TEST_ residues in any collection.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All new Phase B endpoints work correctly on first run. Reusable test file at /app/backend/tests/test_phase_b.py (~60s runtime including Sanad LLM calls). The only failure is a pre-existing seed data mismatch on /links — the DB was seeded with the OLD 4 quick_links from a previous iteration; since seed_defaults() skips when count>0, the new 2-link default (منصة رائد + موقع AZVIO) never materializes. Main agent should decide whether to migrate. Bank statement file auto-delete IS working — verified via before/after listing of /tmp/azvio_uploads. Finance statistics correctly reflect new income+expense transactions with exact deltas. All 3 new Sanad LLM endpoints (pricing-advice, explain-service-type, weekly_insights) return valid non-empty payloads.",
+  "rca_of_issue": "TestLinks.test_defaults_present failed because backend/crud_routes.py::seed_defaults() gates quick_links insertion on `count_documents({}) == 0`. The DB retains 4 links from an older seed schema, so the new 2-link seed is a no-op. This is intentional idempotency (protects user data) but conflicts with the review request's expectation of 2 defaults on fresh seed. Fix: either (a) delete the 4 old rows manually and let seed run, or (b) refactor seed to upsert per document key. No functional bug — all CRUD works."
+}
