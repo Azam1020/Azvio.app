@@ -1,0 +1,178 @@
+{
+  "app_name": "AZVIO",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A structured, highly legible command center where cinematic business data meets native iOS rhythm.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#111111",
+    "surfaceSecondary": "#F2F2F7",
+    "onSurfaceSecondary": "#3A3A3C",
+    "surfaceTertiary": "#E5E5EA",
+    "onSurfaceTertiary": "#8E8E93",
+    "surfaceInverse": "#1C1C1E",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#D95D39",
+    "brandPrimary": "#D95D39",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#E88C71",
+    "onBrandSecondary": "#111111",
+    "brandTertiary": "#FDECE8",
+    "onBrandTertiary": "#D95D39",
+    "success": "#34C759",
+    "onSuccess": "#FFFFFF",
+    "warning": "#FFCC00",
+    "onWarning": "#111111",
+    "error": "#FF3B30",
+    "onError": "#FFFFFF",
+    "info": "#E5E5EA",
+    "onInfo": "#111111",
+    "border": "#E5E5EA",
+    "borderStrong": "#C7C7CC",
+    "divider": "#E5E5EA"
+  },
+  "typography": {
+    "displayFontFamily": "Cairo",
+    "textFontFamily": "Cairo",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous Apple-like margins. Cards must not touch screen edges. Use RTL spacing constructs (marginStart, paddingEnd).",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Ionicons",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use blur on the bottom tab bar and sticky headers.",
+      "Use glass for Sanad AI assistant modal overlays and drag handles."
+    ],
+    "dont's": [
+      "Do not use glass for standard data cards or form fields.",
+      "Avoid heavy blur on the main dashboard metrics."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Auth",
+      "purpose": "Secure Google and email/password sign-in restricted to admins.",
+      "states": {
+        "loading": "Spinner over disabled inputs",
+        "empty": "N/A",
+        "error": "Standard inline red error text for invalid credentials."
+      },
+      "layout": "Minimalist centered login box. AZVIO branding at the top. 'Google Sign-in' as a prominent pill button, standard inputs for email/password. Bottom safe area reserved."
+    },
+    {
+      "name": "Dashboard (Home)",
+      "purpose": "A commanding overview of the business: quick stats, upcoming calendar events, and shortcuts.",
+      "states": {
+        "loading": "Skeleton loading for financial metrics and upcoming events.",
+        "empty": "Welcome state highlighting setup steps.",
+        "error": "Card-level retry buttons if a specific widget fails."
+      },
+      "layout": "Scrollable feed. Top sticky glass header greeting the admin. Featured metric cards (Income/Active Projects). A horizontal scroll for 'Quick Links' & 'My Services'. A vertical list for 'Upcoming Calendar'. RTL alignment strictly enforced."
+    },
+    {
+      "name": "Clients",
+      "purpose": "Track client status, deliverables, and communication.",
+      "states": {
+        "loading": "List of skeleton cards.",
+        "empty": "Illustration of a drone with 'No clients added yet' and a primary 'Add Client' CTA.",
+        "error": "Full screen error with 'Retry' CTA."
+      },
+      "layout": "Search bar at top. Vertical list of Client Cards. Each card shows Name, Service Type, Status pill (In Progress/Delivered), Price. Floating Action Button (FAB) at bottom-right for 'Add Client'. Dedicated WhatsApp icon button inside each card for direct contact."
+    },
+    {
+      "name": "Finance",
+      "purpose": "Track income, expenses, debts, and upload PDF invoices.",
+      "states": {
+        "loading": "Chart skeleton and list skeleton.",
+        "empty": "Empty state illustration with 'Add your first transaction' CTA.",
+        "error": "Full screen error with 'Retry'."
+      },
+      "layout": "Top segmented control (Overview / Subscriptions / Debts). Primary area features an Income vs Expense summary chart. Below it, a 'Recent Transactions' list. A prominent sticky button at the bottom to 'Upload PDF Invoice' triggering AI extraction."
+    },
+    {
+      "name": "Content Pipeline",
+      "purpose": "Kanban-style tracker for video ideas, filming, editing, and publishing.",
+      "states": {
+        "loading": "Skeleton board columns.",
+        "empty": "Illustration of a camera/timeline with 'Start tracking content'.",
+        "error": "Error message with retry."
+      },
+      "layout": "Horizontal paginated view or compact vertical groups by stage (Idea, Filming, Editing, Published). Cards can be tapped to move their stage. Accessible from the Dashboard."
+    },
+    {
+      "name": "Sanad AI",
+      "purpose": "Natural language assistant to manage the app, add clients/expenses, and read invoices.",
+      "states": {
+        "loading": "Typing indicator bubble.",
+        "empty": "Welcome message from Sanad with suggested prompt chips (e.g., 'Log an expense', 'Read this PDF').",
+        "error": "Message bubble with 'Failed to process, try again'."
+      },
+      "layout": "Full-screen chat interface. Messages aligned RTL. Input bar at the bottom with attachment icon (for PDF) and send button. Glassmorphism on the input bar container. Suggested actions in horizontally scrolling chips above the input."
+    }
+  ],
+  "images": {
+    "dashboard_hero": {
+      "url": "https://images.unsplash.com/photo-1473968512647-3e447244af8f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwxfHxkcm9uZSUyMGFlcmlhbCUyMHBob3RvZ3JhcGh5fGVufDB8fHx8MTc4MzA4ODM2OHww&ixlib=rb-4.1.0&q=85",
+      "alt": "Drone flying in the sky representing aerial videography"
+    },
+    "content_tracker_hero": {
+      "url": "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwxfHx2aWRlbyUyMGVkaXRpbmclMjB0aW1lbGluZXxlbnwwfHx8fDE3ODMwODgzNjh8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Video editing software timeline monitor"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly apply RTL layout properties (`flexDirection: 'row-reverse'`, `textAlign: 'right'`, `alignItems: 'flex-end'`) across all screens. Expo's I18nManager should be enabled for RTL, but ensure stylesheets defensively account for right-to-left UI.",
+    "Use 'Cairo' font universally (weight 400 & 500) to ensure high-quality Arabic typography.",
+    "Implement the AZVIO brand identity using the provided LIGHT theme. The primary accent is a cinematic Rust/Terracotta (`#D95D39`), which should be used sparingly for primary actions, active tabs, and highlights. NEVER use blue, purple, or indigo.",
+    "The primary navigation is 4 Bottom Tabs: Dashboard, Clients, Finance, and Sanad AI. Content Pipeline and Calendar are accessible via prominent cards/links on the Dashboard.",
+    "Ensure the Sanad AI assistant screen has an attachment button for PDF uploads and renders chat bubbles elegantly using iOS-Native Clean spacing.",
+    "WhatsApp direct buttons on Client cards should use standard deep linking. Ensure they use a solid brand color or strong outline to stand out as a primary quick action.",
+    "Adhere to the 'iOS-Native Clean' personality: cards must have margin from screen edges, use shadow_tier 1, and generous `lg` to `xl` spacing to let the Arabic text breathe.",
+    "Implement a gradient scrim (top to bottom, transparent to `surfaceInverse`) on any background images like the dashboard hero to guarantee text readability.",
+    "Add haptics mapped to all major interactions: adding a client, moving a content card, sending an AI message, and toggling tabs."
+  ],
+  "haptics": {
+    "events": {
+      "tab_press": "light",
+      "button_press": "light",
+      "ai_message_sent": "medium",
+      "client_added": "success",
+      "stage_moved": "selection"
+    }
+  }
+}
