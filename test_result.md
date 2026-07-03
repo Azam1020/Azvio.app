@@ -297,24 +297,19 @@ test_plan:
 agent_communication:
     - agent: "main"
       message: |
-        Implemented Phase 1-4 of AZVIO update:
-        1. Brand identity: real AZVIO logo + teal #3E9194 color across all screens.
-        2. Quick links reduced to 2 (منصة رائد + azvio.co).
-        3. Client sub-categories: new Categories collection with 7 seed values. CategoryPicker component with manage modal (manual add + Sanad-suggested).
-        4. Client activity log now supports file uploads (base64 in Mongo). Attachments viewable via signed data URI.
-        5. Sanad price opinion runs auto (debounced 900ms) after price entry - returns verdict + market range + opinion.
-        6. "Sanad helps me" button (✨ icon) in content and services screens - opens suggest modal, one-tap accept.
-        7. Dashboard now has live BarChart (income/expenses 6mo) + PieChart (content stages). Personalize modal via ⚙ icon lets user toggle widgets.
+        Phase B (Iteration 3) complete. Implemented per user request:
+        1. **PWA Export**: manifest.json + sw.js in /public, PWA meta in +html.tsx, install button in dashboard (web only).
+        2. **Editable Quick Links**: full CRUD, seeded with 2 defaults (منصة رائد + azvio.co). Old seeds cleaned via one-time migration.
+        3. **Custom Service Types collection**: `/api/service-types` CRUD, seeded drone + editing as defaults (protected from delete). `/api/sanad/explain-service-type` gives description + target audience + typical price + tips.
+        4. **My Pricing (personal price knowledge base)**: `/api/my-pricing` CRUD + new `/pricing` screen where user manages ranges per service_type + sub_category. `/api/sanad/pricing-advice` compares all user pricing vs market and gives per-item verdict.
+        5. **Enhanced Finance screen**: new "الإحصائيات" segment with BarChart (income vs expense 6mo), LineChart (net trend), PieChart (type breakdown), top categories bar list, top clients rank list. Backend: `/api/finance/statistics`.
+        6. **Bank Statement upload**: `/api/finance/statement/analyze` (multipart) uses Gemini 3.1 Pro to extract transactions from PDF/image, then **file is auto-deleted from server immediately** (privacy). `/api/finance/statement/save` inserts selected transactions.
+        7. **Weekly Insights screen** (`/insights`): shows week metrics + Sanad's headline/wins/alerts/focus-next-week. Backend: `/api/insights/weekly` generates fresh AI-powered report on demand.
+        8. **Sanad shortcut in finance**: floating brand button next to bottom actions.
         
-        All new backend endpoints tested manually via python requests:
-        - POST /api/categories, GET /api/categories, DELETE /api/categories/{id}
-        - POST /api/sanad/price-opinion (returns fair/low/high verdict + range)
-        - POST /api/sanad/suggest-content (returns ideas array)
-        - POST /api/sanad/suggest-services (returns services array)
-        - POST /api/sanad/suggest-categories (returns categories array)
-        - GET /api/dashboard/timeseries (returns months + income + expense arrays)
-        - POST /api/clients/{id}/logs with attachment_data (base64)
-        - GET /api/clients/{id}/logs/{log_id}/attachment
+        All new endpoints verified by testing subagent (37/38 passing; 1 seed issue fixed via one-time migration).
         
-        Please run comprehensive backend tests on all new endpoints. Test credentials:
-        Info@azvio.co / Azvio@2026 (already whitelisted).
+        **Deferred** (awaiting user credentials):
+        - Google Calendar OAuth (needs GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET)
+        - Supabase Storage (needs SUPABASE_URL + SUPABASE_ANON_KEY + SUPABASE_SERVICE_ROLE_KEY)
+        - Push notification every Saturday (needs deployment build)
