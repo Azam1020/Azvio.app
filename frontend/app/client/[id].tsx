@@ -1,5 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Linking,
   Platform,
   ScrollView,
@@ -12,10 +14,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as DocumentPicker from 'expo-document-picker';
+import * as WebBrowser from 'expo-web-browser';
 import { api } from '@/src/api';
 import { AppModal, Chips, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
 import { SERVICE_LABELS, SERVICE_OPTIONS, openWhatsApp } from '@/src/clientHelpers';
+import { CategoryPicker } from '@/src/CategoryPicker';
+import { SanadPriceOpinion } from '@/src/SanadPriceOpinion';
 
 const LOG_TYPES = [
   { key: 'note', label: 'ملاحظة' },
@@ -27,6 +33,7 @@ const LOG_ICONS: Record<string, any> = {
   note: 'document-text-outline',
   whatsapp: 'logo-whatsapp',
   form: 'clipboard-outline',
+  file: 'attach',
 };
 
 export default function ClientDetail() {
@@ -35,6 +42,7 @@ export default function ClientDetail() {
   const [client, setClient] = useState<any>(null);
   const [logText, setLogText] = useState('');
   const [logType, setLogType] = useState('note');
+  const [uploading, setUploading] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>({});
@@ -67,6 +75,76 @@ export default function ClientDetail() {
     load();
   };
 
+  const uploadFile = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (res.canceled || !res.assets?.[0]) return;
+      const asset = res.assets[0];
+      if (asset.size && asset.size > 10 * 1024 * 1024) {
+        Alert.alert('الملف كبير جداً', 'الحد الأقصى 10MB لكل ملف.');
+        return;
+      }
+      setUploading(true);
+      // read file as base64
+      let base64 = '';
+      if (Platform.OS === 'web') {
+        // On web, uri is a blob URL. Fetch it and convert to base64.
+        const blob = await (await fetch(asset.uri)).blob();
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const s = String(reader.result || '');
+            resolve(s.split(',')[1] || '');
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        const FileSystem = await import('expo-file-system/legacy');
+        base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+      }
+      await api(`/clients/${id}/logs`, {
+        method: 'POST',
+        body: JSON.stringify({
+          text: logText.trim() || asset.name,
+          log_type: 'file',
+          attachment_name: asset.name,
+          attachment_mime: asset.mimeType || 'application/octet-stream',
+          attachment_data: base64,
+        }),
+      });
+      setLogText('');
+      load();
+    } catch (e: any) {
+      Alert.alert('خطأ', e?.message || 'تعذر رفع الملف');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const openAttachment = async (log: any) => {
+    try {
+      const att = await api(`/clients/${id}/logs/${log.id}/attachment`);
+      if (!att?.data) return;
+      const dataUri = `data:${att.mime};base64,${att.data}`;
+      if (Platform.OS === 'web') {
+        // Open in new tab
+        const w = (globalThis as any).window;
+        if (w?.open) w.open(dataUri, '_blank');
+      } else {
+        // Save to cache and open with browser
+        const FileSystem = await import('expo-file-system/legacy');
+        const path = `${FileSystem.cacheDirectory}${log.id}-${att.name}`;
+        await FileSystem.writeAsStringAsync(path, att.data, { encoding: FileSystem.EncodingType.Base64 });
+        await WebBrowser.openBrowserAsync(path);
+      }
+    } catch {}
+  };
+
   const deleteLog = async (logId: string) => {
     await api(`/clients/${id}/logs/${logId}`, { method: 'DELETE' });
     load();
@@ -84,6 +162,7 @@ export default function ClientDetail() {
       name: client.name,
       phone: client.phone,
       service_type: client.service_type,
+      sub_category: client.sub_category || '',
       agreed_price: String(client.agreed_price || ''),
       source: client.source,
       drive_link: client.drive_link,
@@ -114,12 +193,13 @@ export default function ClientDetail() {
   }
 
   const logs = [...(client.logs || [])].reverse();
+  const subtitle = [SERVICE_LABELS[client.service_type], client.sub_category].filter(Boolean).join(' • ');
 
   return (
     <View style={{ flex: 1, backgroundColor: C.surface2 }}>
       <ScreenHeader
         title={client.name}
-        subtitle={SERVICE_LABELS[client.service_type]}
+        subtitle={subtitle}
         canBack
         right={
           <TouchableOpacity onPress={deleteClient} hitSlop={8} testID="delete-client-btn">
@@ -168,6 +248,7 @@ export default function ClientDetail() {
         <View style={styles.card}>
           <InfoRow icon="cash-outline" label="السعر المتفق عليه" value={fmt(client.agreed_price)} />
           <InfoRow icon="call-outline" label="الجوال" value={client.phone || '—'} />
+          {!!client.sub_category && <InfoRow icon="pricetag-outline" label="الفئة" value={client.sub_category} />}
           <InfoRow icon="megaphone-outline" label="المصدر" value={client.source || '—'} />
           {!!client.drive_link && (
             <TouchableOpacity style={styles.driveBtn} onPress={() => Linking.openURL(client.drive_link)}>
@@ -190,11 +271,30 @@ export default function ClientDetail() {
               value={logText}
               onChangeText={setLogText}
               testID="log-input"
+              multiline
             />
             <TouchableOpacity style={styles.logAddBtn} onPress={addLog} testID="add-log-btn">
               <Ionicons name="add" size={22} color="#FFF" />
             </TouchableOpacity>
           </View>
+
+          {/* File upload button */}
+          <TouchableOpacity
+            style={[styles.uploadBtn, uploading && { opacity: 0.6 }]}
+            onPress={uploadFile}
+            disabled={uploading}
+            testID="upload-file-btn"
+          >
+            {uploading ? (
+              <ActivityIndicator color={C.brand} size="small" />
+            ) : (
+              <>
+                <Ionicons name="cloud-upload-outline" size={18} color={C.brand} />
+                <Text style={styles.uploadText}>رفع ملف (PDF/صورة)</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
           {logs.length === 0 ? (
             <Text style={styles.emptyLogs}>لا توجد سجلات بعد</Text>
           ) : (
@@ -203,6 +303,12 @@ export default function ClientDetail() {
                 <Ionicons name={LOG_ICONS[log.log_type] || 'document-text-outline'} size={16} color={C.brand} />
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                   <Text style={styles.logText}>{log.text}</Text>
+                  {log.attachment && (
+                    <TouchableOpacity onPress={() => openAttachment(log)} style={styles.attachRow} testID={`attach-${log.id}`}>
+                      <Ionicons name="document-attach" size={13} color={C.brand} />
+                      <Text style={styles.attachName}>{log.attachment.name || 'مرفق'}</Text>
+                    </TouchableOpacity>
+                  )}
                   <Text style={styles.logDate}>{(log.created_at || '').slice(0, 16).replace('T', ' ')}</Text>
                 </View>
                 <TouchableOpacity onPress={() => deleteLog(log.id)} hitSlop={6}>
@@ -218,8 +324,23 @@ export default function ClientDetail() {
         <Field label="اسم العميل" value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} />
         <Field label="رقم الجوال" value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} keyboardType="phone-pad" />
         <Text style={styles.fieldLabel}>نوع الخدمة</Text>
-        <Chips options={SERVICE_OPTIONS} value={form.service_type} onChange={(v) => setForm({ ...form, service_type: v })} />
+        <Chips
+          options={SERVICE_OPTIONS}
+          value={form.service_type}
+          onChange={(v) => setForm({ ...form, service_type: v, sub_category: '' })}
+        />
+        <CategoryPicker
+          serviceType={form.service_type}
+          value={form.sub_category}
+          onChange={(v) => setForm({ ...form, sub_category: v })}
+        />
         <Field label="السعر المتفق عليه (ر.س)" value={form.agreed_price} onChangeText={(v) => setForm({ ...form, agreed_price: v })} keyboardType="numeric" />
+        <SanadPriceOpinion
+          serviceType={form.service_type}
+          subCategory={form.sub_category}
+          price={parseFloat(form.agreed_price) || 0}
+          clientName={form.name}
+        />
         <Field label="مصدر العميل" value={form.source} onChangeText={(v) => setForm({ ...form, source: v })} />
         <Field label="رابط Google Drive" value={form.drive_link} onChangeText={(v) => setForm({ ...form, drive_link: v })} autoCapitalize="none" />
         <Field label="ملاحظات" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} multiline />
@@ -285,9 +406,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   sectionTitle: { fontFamily: F.bold, fontSize: 16, color: C.onSurface, textAlign: 'right', marginBottom: 10 },
-  logInputRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
+  logInputRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 8, alignItems: 'flex-start' },
   logInput: {
     flex: 1,
+    minHeight: 42,
+    maxHeight: 100,
     backgroundColor: C.surface2,
     borderRadius: R.md,
     paddingHorizontal: 12,
@@ -298,10 +421,24 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   logAddBtn: { width: 42, height: 42, borderRadius: R.md, backgroundColor: C.brand, alignItems: 'center', justifyContent: 'center' },
+  uploadBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: C.brandSoft,
+    borderRadius: R.md,
+    paddingVertical: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(62,145,148,0.25)',
+    borderStyle: 'dashed',
+  },
+  uploadText: { fontFamily: F.bold, fontSize: 12, color: C.brand },
   emptyLogs: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'center', paddingVertical: 12 },
   logRow: {
     flexDirection: 'row-reverse',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 10,
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -309,5 +446,16 @@ const styles = StyleSheet.create({
   },
   logText: { fontFamily: F.regular, fontSize: 13, color: C.onSurface, textAlign: 'right' },
   logDate: { fontFamily: F.regular, fontSize: 10, color: C.muted, marginTop: 2 },
+  attachRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    backgroundColor: C.brandSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: R.sm,
+  },
+  attachName: { fontFamily: F.semibold, fontSize: 11, color: C.brand },
   fieldLabel: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, marginBottom: 6, textAlign: 'right' },
 });

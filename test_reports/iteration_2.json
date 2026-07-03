@@ -1,0 +1,45 @@
+{
+  "summary": "Comprehensive backend test of AZVIO new features added this session. 35/35 pytest tests PASSED (44s). Coverage: (1) Categories CRUD — 7 seeded defaults present (عقاري/فعاليات/سوشيال ميديا/فيديو دعائي etc), filter by service_type=drone|editing, create, duplicate returns 400 (name+service_type dedupe), update, delete-then-verify-gone. (2) Client sub_category — created client with sub_category='عقاري' agreed_price=1500, verified persisted via GET, updated to 'فعاليات' and re-fetched. (3) Client log attachment — POST /clients/{id}/logs with base64 PDF payload; response strips attachment.data (only name+mime returned), GET /clients/{id}/logs/{log_id}/attachment returns full {name,mime,data} matching payload; text-only log also works; GET /clients/{id} returns logs array with attachment metadata. (4) Sanad AI assist — /price-opinion with price=1500 returns real Arabic opinion + verdict∈{low,fair,high,unknown} + market_min/max floats; price=0 returns unknown/empty (no LLM call — correct short-circuit); /suggest-categories, /suggest-content(topic='رمضان',count=3), /suggest-services all return well-formed non-empty arrays with required fields. (5) Sanad chat action protocol — sent Arabic message 'أضف فئة تصوير مطاعم للدرون' → new category persisted with source='sanad'; sent 'أضف خدمة تصوير قصير من 300 إلى 900 مونتاج' → new service persisted with price_from>0 and price_to>=price_from. (6) Dashboard timeseries — /dashboard/timeseries default returns 6 months with matching-length income/expense/new_clients arrays and YYYY-MM month format; ?months=3 returns 3; added income tx 777 today → income[current_month] delta = +777 exactly; then cleaned up. (7) Regression sanity — login OK, unauthorized email → 401, all GET endpoints (/dashboard, /clients, /transactions, /content, /events, /services, /links) return 200. All test data cleaned up (verified: 0 TEST_ clients, 0 TEST_ tx, categories back to 7 seeded, services back to 2 seeded).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_new_features.xml"
+  ],
+  "action_items": [
+    "No backend fixes required — all 35 tests pass on first run.",
+    "Optional hardening (non-blocking): (a) Categories POST does not currently reject empty name (strips only) — Sanad's add_category action does check, but the manual REST endpoint would accept name=' ' (becomes ''). Consider adding min_length=1 validation. (b) In crud_routes.CategoryUpdate, updating name+service_type does not re-check for duplicates on the new combination. (c) Sanad price_opinion returns market_min/max=0 when the LLM omits them — UI should treat 0 as 'not provided' rather than an actual range.",
+    "Frontend was NOT tested in this iteration (only backend was requested)."
+  ],
+  "critical_code_review_comments": [
+    "crud_routes.py: Category dedupe uses exact (stripped) name + service_type — good. However on PUT there's no dedupe check, so a rename could create duplicates. Low priority.",
+    "crud_routes.py add_client_log: correctly strips base64 blob from response (returns only name+mime under attachment) — great for bandwidth. Full blob is still stored in Mongo and retrievable via /attachment sub-route.",
+    "sanad.py price_opinion: short-circuits when agreed_price<=0 without calling the LLM — good (saves cost + returns deterministic unknown verdict).",
+    "sanad.py _parse_json_block uses a greedy regex \\{.*\\} which can misfire when LLM prepends prose containing braces; observed cleanly in test but fragile. Consider using json.JSONDecoder().raw_decode over the text instead.",
+    "sanad.py execute_actions correctly runs all <action> tags and appends confirmations to reply — verified end-to-end with add_category and add_service in TestSanadChatActions.",
+    "dashboard_timeseries builds ym_list correctly for month rollovers (year decrement when m<=0) — spot-checked logic; income addition test confirmed accurate current-month accumulation.",
+    "All new endpoints protected via router = APIRouter(dependencies=[Depends(get_current_user)]) — no auth bypass possible.",
+    "All responses exclude Mongo _id via projection {\"_id\": 0} — no ObjectId serialization issues.",
+    "No file >700 lines. crud_routes.py=547, sanad.py=579 (borderline; consider splitting invoice + assist endpoints into a separate module in future refactor)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py (created — 35 pytest tests covering all new features)"
+  ],
+  "success_rate": {
+    "backend": "100% (35/35)",
+    "frontend": "not tested this iteration"
+  },
+  "seed_data_creation": "All test data created during the run was cleaned up (client 'TEST_client_sub', category 'TEST_فئة_*' + 'تصوير مطاعم', service 'تصوير قصير لسوشيال ميديا', income tx 'TEST_timeseries', chat session TEST_actions_*). Post-cleanup verified: 0 TEST_ clients, 0 TEST_ transactions, exactly 7 seeded categories, 2 seeded services — DB is back to baseline.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All new endpoints are working. Reusable test file at /app/backend/tests/test_new_features.py — run `pytest backend/tests/test_new_features.py -v` (takes ~45s because Sanad LLM tests call Gemini and Claude). Sanad LLM endpoints occasionally return 500 with 'Budget exceeded' — the helper _sanad_post already retries once with a 4s backoff. For frontend testing: new UI hooks likely needed for categories management screen, sub_category picker on client form, attachment upload button in client logs, and price-opinion badge on client save. Backend base URL: https://azvio-workspace.preview.emergentagent.com. Login: Info@azvio.co / Azvio@2026.",
+  "rca_of_issue": "N/A — no bugs found."
+}

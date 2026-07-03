@@ -1,4 +1,4 @@
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 import { useAuth } from "@/src/AuthContext";
 import { C, F } from "@/src/theme";
@@ -9,6 +9,11 @@ export default function Index() {
   if (loading) {
     return (
       <View style={styles.container}>
+        <Image
+          source={require("../assets/images/azvio-logo.png")}
+          style={styles.logoImg}
+          resizeMode="contain"
+        />
         <Text style={styles.logo}>
           AZV<Text style={{ color: C.brand }}>IO</Text>
         </Text>
@@ -29,10 +34,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 20,
   },
+  logoImg: { width: 96, height: 92 },
   logo: {
     fontFamily: F.bold,
-    fontSize: 42,
-    letterSpacing: 4,
+    fontSize: 32,
+    letterSpacing: 3,
     color: C.onSurface,
   },
 });

@@ -5,6 +5,8 @@ import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
 import { AppModal, Chips, Empty, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
+import { SanadSuggestModal } from '@/src/SanadSuggestModal';
+import { suggestServices } from '@/src/clientHelpers';
 
 const TYPE_META: Record<string, { label: string; icon: any }> = {
   drone: { label: 'درون', icon: 'airplane' },
@@ -16,6 +18,7 @@ const emptyForm = { title: '', description: '', service_type: 'drone', price_fro
 export default function ServicesScreen() {
   const [services, setServices] = useState<any[]>([]);
   const [modal, setModal] = useState(false);
+  const [sanadOpen, setSanadOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
@@ -84,9 +87,14 @@ export default function ServicesScreen() {
         subtitle="خدمات AZVIO وأسعارها"
         canBack
         right={
-          <TouchableOpacity style={styles.addBtn} onPress={openAdd} testID="add-service-btn">
-            <Ionicons name="add" size={22} color="#FFF" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
+            <TouchableOpacity style={styles.sanadBtn} onPress={() => setSanadOpen(true)} testID="sanad-helps-services">
+              <Ionicons name="sparkles" size={16} color={C.brand} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.addBtn} onPress={openAdd} testID="add-service-btn">
+              <Ionicons name="add" size={22} color="#FFF" />
+            </TouchableOpacity>
+          </View>
         }
       />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
@@ -145,12 +153,37 @@ export default function ServicesScreen() {
         <Field label="السعر من (ر.س)" value={form.price_from} onChangeText={(v) => setForm({ ...form, price_from: v })} keyboardType="numeric" />
         <Field label="السعر إلى (ر.س)" value={form.price_to} onChangeText={(v) => setForm({ ...form, price_to: v })} keyboardType="numeric" />
       </AppModal>
+
+      <SanadSuggestModal
+        visible={sanadOpen}
+        onClose={() => setSanadOpen(false)}
+        title="سند يساعدني — أفكار خدمات"
+        serviceSelector
+        fetcher={async ({ service_type }) => {
+          const r = await suggestServices({ service_type: service_type || 'drone' });
+          return r.services || [];
+        }}
+        onAccept={async (it) => {
+          await api('/services', {
+            method: 'POST',
+            body: JSON.stringify({
+              title: it.title,
+              description: it.description || '',
+              service_type: it.service_type || 'drone',
+              price_from: it.price_from || 0,
+              price_to: it.price_to || 0,
+            }),
+          });
+          load();
+        }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.brand, alignItems: 'center', justifyContent: 'center' },
+  sanadBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.brandSoft, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(62,145,148,0.25)' },
   card: { backgroundColor: C.surface, borderRadius: R.lg, padding: 16, marginBottom: 12, ...shadow },
   cardHead: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   iconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.brandSoft, alignItems: 'center', justifyContent: 'center' },

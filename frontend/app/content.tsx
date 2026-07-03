@@ -6,6 +6,8 @@ import * as Haptics from 'expo-haptics';
 import { api } from '@/src/api';
 import { AppModal, Chips, Empty, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { C, F, R, shadow } from '@/src/theme';
+import { SanadSuggestModal } from '@/src/SanadSuggestModal';
+import { suggestContent } from '@/src/clientHelpers';
 
 const STAGES = [
   { key: 'idea', label: 'فكرة', icon: 'bulb' as const, color: '#B8860B' },
@@ -23,6 +25,7 @@ const NEXT_STAGE: Record<string, string> = {
 export default function ContentScreen() {
   const [items, setItems] = useState<any[]>([]);
   const [modal, setModal] = useState(false);
+  const [sanadOpen, setSanadOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', stage: 'idea' });
 
@@ -72,9 +75,14 @@ export default function ContentScreen() {
         subtitle="فكرة ← تصوير ← مونتاج ← منشور"
         canBack
         right={
-          <TouchableOpacity style={styles.addBtn} onPress={() => setModal(true)} testID="add-content-btn">
-            <Ionicons name="add" size={22} color="#FFF" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
+            <TouchableOpacity style={styles.sanadBtn} onPress={() => setSanadOpen(true)} testID="sanad-helps-content">
+              <Ionicons name="sparkles" size={16} color={C.brand} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.addBtn} onPress={() => setModal(true)} testID="add-content-btn">
+              <Ionicons name="add" size={22} color="#FFF" />
+            </TouchableOpacity>
+          </View>
         }
       />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
@@ -133,12 +141,31 @@ export default function ContentScreen() {
         <Text style={styles.fieldLabel}>المرحلة</Text>
         <Chips options={STAGES.map((s) => ({ key: s.key, label: s.label, color: s.color }))} value={form.stage} onChange={(v) => setForm({ ...form, stage: v })} />
       </AppModal>
+
+      <SanadSuggestModal
+        visible={sanadOpen}
+        onClose={() => setSanadOpen(false)}
+        title="سند يساعدني — أفكار محتوى"
+        showTopic
+        fetcher={async ({ topic }) => {
+          const r = await suggestContent({ topic, count: 5 });
+          return r.ideas || [];
+        }}
+        onAccept={async (it) => {
+          await api('/content', {
+            method: 'POST',
+            body: JSON.stringify({ title: it.title, description: it.description || '', stage: 'idea' }),
+          });
+          load();
+        }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.brand, alignItems: 'center', justifyContent: 'center' },
+  sanadBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.brandSoft, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(62,145,148,0.25)' },
   stageHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   stageBadge: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: R.pill, paddingHorizontal: 12, paddingVertical: 5 },
   stageLabel: { fontFamily: F.bold, fontSize: 13 },

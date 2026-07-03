@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,7 +11,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -18,13 +18,12 @@ import { useAuth } from '@/src/AuthContext';
 import { C, F, R, shadow } from '@/src/theme';
 
 export default function LoginScreen() {
-  const { user, loading, loginEmail, loginGoogle } = useAuth();
+  const { user, loading, loginEmail } = useAuth();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [googleBusy, setGoogleBusy] = useState(false);
 
   if (!loading && user) return <Redirect href="/(tabs)" />;
 
@@ -45,18 +44,6 @@ export default function LoginScreen() {
     }
   };
 
-  const handleGoogle = async () => {
-    setError('');
-    setGoogleBusy(true);
-    try {
-      await loginGoogle();
-    } catch (e: any) {
-      setError(e.message || 'فشل تسجيل الدخول عبر Google');
-    } finally {
-      setGoogleBusy(false);
-    }
-  };
-
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: C.surface }}
@@ -70,36 +57,18 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.brandWrap}>
-          <Text style={styles.logo}>
+          <Image
+            source={require('../assets/images/azvio-logo.png')}
+            style={styles.logoImg}
+            resizeMode="contain"
+          />
+          <Text style={styles.wordmark}>
             AZV<Text style={{ color: C.brand }}>IO</Text>
           </Text>
-          <View style={styles.logoUnderline} />
           <Text style={styles.tagline}>لوحة إدارة أعمال التصوير الجوي والمونتاج</Text>
         </View>
 
         <View style={styles.card}>
-          <TouchableOpacity
-            style={styles.googleBtn}
-            onPress={handleGoogle}
-            disabled={googleBusy}
-            testID="google-login-btn"
-          >
-            {googleBusy ? (
-              <ActivityIndicator color={C.onSurface} />
-            ) : (
-              <>
-                <Ionicons name="logo-google" size={20} color="#DB4437" />
-                <Text style={styles.googleText}>الدخول بحساب Google</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>أو</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
           <Text style={styles.label}>البريد الإلكتروني</Text>
           <TextInput
             style={styles.input}
@@ -147,9 +116,9 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flexGrow: 1, paddingHorizontal: 24 },
   brandWrap: { alignItems: 'center', marginBottom: 36 },
-  logo: { fontFamily: F.bold, fontSize: 46, letterSpacing: 6, color: C.onSurface },
-  logoUnderline: { width: 56, height: 4, borderRadius: 2, backgroundColor: C.brand, marginTop: 2 },
-  tagline: { fontFamily: F.regular, fontSize: 14, color: C.muted, marginTop: 12, textAlign: 'center' },
+  logoImg: { width: 88, height: 88, marginBottom: 12 },
+  wordmark: { fontFamily: F.bold, fontSize: 32, letterSpacing: 4, color: C.onSurface },
+  tagline: { fontFamily: F.regular, fontSize: 13, color: C.muted, marginTop: 10, textAlign: 'center' },
   card: {
     backgroundColor: C.surface,
     borderRadius: R.lg,
@@ -159,21 +128,9 @@ const styles = StyleSheet.create({
     ...shadow,
   },
   googleBtn: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: C.surface,
-    borderWidth: 1.5,
-    borderColor: C.borderStrong,
-    borderRadius: R.md,
-    paddingVertical: 13,
-    minHeight: 48,
+    display: 'none' as any,
   },
   googleText: { fontFamily: F.semibold, fontSize: 15, color: C.onSurface },
-  dividerRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, marginVertical: 20 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: C.border },
-  dividerText: { fontFamily: F.regular, fontSize: 13, color: C.muted },
   label: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, marginBottom: 6, textAlign: 'right' },
   input: {
     backgroundColor: C.surface2,

@@ -31,14 +31,17 @@ MIME_MAP = {
 ACTION_PROTOCOL = """
 ## بروتوكول تنفيذ الأوامر
 عندما يطلب المستخدم صراحةً إضافة أو تعديل بيانات، أدرج في نهاية ردك وسم <action> بصيغة JSON (يمكن إدراج أكثر من وسم):
-<action>{"type":"add_client","data":{"name":"اسم العميل","phone":"05xxxxxxxx","service_type":"drone","agreed_price":1500,"source":"انستقرام","drive_link":"","notes":""}}</action>
+<action>{"type":"add_client","data":{"name":"اسم العميل","phone":"05xxxxxxxx","service_type":"drone","sub_category":"عقاري","agreed_price":1500,"source":"انستقرام","drive_link":"","notes":""}}</action>
 <action>{"type":"add_transaction","data":{"type":"expense","amount":250,"description":"وصف العملية","category":"معدات","date":"YYYY-MM-DD","client_name":"","debt_direction":"owed_to_me"}}</action>
 <action>{"type":"add_content","data":{"title":"عنوان الفكرة","description":"","stage":"idea"}}</action>
 <action>{"type":"add_event","data":{"title":"تصوير مشروع X","event_type":"shooting","date":"YYYY-MM-DD","time":"16:00","client_name":"","notes":""}}</action>
 <action>{"type":"update_client_status","data":{"name":"اسم العميل","status":"delivered"}}</action>
+<action>{"type":"add_category","data":{"name":"عقاري","service_type":"drone","description":"شرح مختصر يفهمه سند فقط"}}</action>
+<action>{"type":"add_service","data":{"title":"اسم الخدمة","description":"وصف مختصر","service_type":"drone","price_from":500,"price_to":2000}}</action>
 
 قيم مسموحة:
 - service_type: drone أو editing أو both
+- sub_category: اسم الفئة الفرعية (مثل: عقاري، فعاليات، سوشيال ميديا)
 - transaction type: income (دخل) أو expense (مصروف) أو withdrawal (سحب) أو debt (دين) أو subscription (اشتراك شهري)
 - debt_direction: owed_to_me (لي) أو i_owe (عليّ)
 - content stage: idea أو filming أو editing أو published
@@ -118,6 +121,7 @@ async def run_action(action: dict):
             "name": d.get("name") or "بدون اسم",
             "phone": str(d.get("phone") or ""),
             "service_type": d.get("service_type") or "drone",
+            "sub_category": d.get("sub_category") or "",
             "agreed_price": float(d.get("agreed_price") or 0),
             "status": d.get("status") or "in_progress",
             "drive_link": d.get("drive_link") or "",
@@ -180,6 +184,36 @@ async def run_action(action: dict):
             label = "تم التسليم" if status == "delivered" else "قيد التنفيذ"
             return f"✅ تم تحديث حالة العميل {name} إلى: {label}"
         return f"⚠️ لم أجد عميلاً باسم {name}"
+    if t == "add_category":
+        name = (d.get("name") or "").strip()
+        if not name:
+            return "⚠️ اسم الفئة مفقود"
+        stype = d.get("service_type") or "drone"
+        existing = await db.categories.find_one({"name": name, "service_type": stype})
+        if existing:
+            return f"⚠️ الفئة {name} موجودة مسبقاً"
+        doc = {
+            "id": uuid.uuid4().hex,
+            "name": name,
+            "service_type": stype,
+            "description": d.get("description") or "",
+            "source": "sanad",
+            "created_at": now,
+        }
+        await db.categories.insert_one(dict(doc))
+        return f"✅ تمت إضافة الفئة: {name}"
+    if t == "add_service":
+        doc = {
+            "id": uuid.uuid4().hex,
+            "title": d.get("title") or "خدمة جديدة",
+            "description": d.get("description") or "",
+            "service_type": d.get("service_type") or "drone",
+            "price_from": float(d.get("price_from") or 0),
+            "price_to": float(d.get("price_to") or 0),
+            "created_at": now,
+        }
+        await db.services.insert_one(dict(doc))
+        return f"✅ تمت إضافة الخدمة: {doc['title']}"
     return None
 
 
@@ -329,6 +363,185 @@ async def sanad_history(session_id: str = "default"):
 async def sanad_clear(session_id: str = "default"):
     await db.chat_messages.delete_many({"session_id": session_id})
     return {"ok": True}
+
+
+# ============ Sanad Assist Endpoints (price opinion + suggestions) ============
+
+async def _sanad_ask(system: str, user: str, model: tuple = ("gemini", "gemini-3.5-flash")) -> str:
+    try:
+        chat = LlmChat(
+            api_key=LLM_KEY,
+            session_id=f"sanad-assist-{uuid.uuid4().hex[:10]}",
+            system_message=system,
+        ).with_model(model[0], model[1])
+        resp = await chat.send_message(UserMessage(text=user))
+        return resp if isinstance(resp, str) else (getattr(resp, "text", None) or str(resp))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"تعذر الحصول على رد سند: {e}")
+
+
+def _parse_json_block(text: str) -> dict | list:
+    m = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
+    if not m:
+        return {}
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return {}
+
+
+class PriceOpinionReq(BaseModel):
+    service_type: str = "drone"
+    sub_category: str = ""
+    agreed_price: float = 0
+    client_name: str = ""
+
+
+@router.post("/sanad/price-opinion")
+async def price_opinion(body: PriceOpinionReq):
+    if body.agreed_price <= 0:
+        return {"opinion": "", "verdict": "unknown", "market_min": 0, "market_max": 0}
+    # gather category description if exists
+    desc = ""
+    if body.sub_category:
+        cat = await db.categories.find_one({"name": body.sub_category, "service_type": body.service_type}, {"_id": 0})
+        if cat:
+            desc = cat.get("description") or ""
+    stype_label = {"drone": "تصوير جوي بالدرون", "editing": "مونتاج فيديو", "both": "درون ومونتاج معاً"}.get(body.service_type, body.service_type)
+    system = (
+        "أنت سند، خبير تسعير خدمات التصوير الجوي والمونتاج في السوق السعودي. "
+        "تقدّم رأياً مختصراً وعمليّاً في العربية عن السعر المتفق عليه مقارنةً بالسوق السعودي الحالي، "
+        "وتعطي نطاقاً واقعياً بالريال السعودي. لا تُطيل. أعطِ الإجابة كـ JSON فقط."
+    )
+    user = (
+        f"نوع الخدمة: {stype_label}\n"
+        f"الفئة الفرعية: {body.sub_category or 'بدون'}\n"
+        f"شرح داخلي للفئة: {desc or 'لا يوجد'}\n"
+        f"السعر المتفق عليه: {body.agreed_price} ر.س\n"
+        "أعطِ الرد بصيغة JSON فقط:\n"
+        '{"opinion":"تعليق مختصر بالعربية (سطر أو سطرين)","verdict":"low|fair|high","market_min":0,"market_max":0}\n'
+        "verdict قيمها: low (أقل من السوق)، fair (مناسب)، high (أعلى من السوق)."
+    )
+    text = await _sanad_ask(system, user)
+    data = _parse_json_block(text) or {}
+    return {
+        "opinion": data.get("opinion") or "",
+        "verdict": data.get("verdict") or "unknown",
+        "market_min": float(data.get("market_min") or 0),
+        "market_max": float(data.get("market_max") or 0),
+    }
+
+
+class SuggestCategoriesReq(BaseModel):
+    service_type: str = "drone"
+    hint: str = ""
+
+
+@router.post("/sanad/suggest-categories")
+async def suggest_categories(body: SuggestCategoriesReq):
+    existing = await db.categories.find({"service_type": body.service_type}, {"_id": 0, "name": 1}).to_list(200)
+    existing_names = [c["name"] for c in existing]
+    stype_label = {"drone": "التصوير الجوي بالدرون", "editing": "مونتاج الفيديو"}.get(body.service_type, body.service_type)
+    system = (
+        "أنت سند، خبير سوق التصوير الجوي والمونتاج في السعودية. "
+        "تقترح فئات فرعية عملية للخدمات، بالعربية، مختصرة. أعطِ الرد كـ JSON فقط."
+    )
+    user = (
+        f"اقترح 5 فئات فرعية جديدة (غير مكررة) لخدمة {stype_label}.\n"
+        f"الفئات الموجودة مسبقاً (لا تكرر): {', '.join(existing_names) if existing_names else 'لا يوجد'}\n"
+        f"إشارة إضافية من المستخدم: {body.hint or 'لا يوجد'}\n"
+        "أعد JSON: {\"categories\":[{\"name\":\"اسم الفئة\",\"description\":\"شرح مختصر يوضح متى تستخدم\"},...]}"
+    )
+    text = await _sanad_ask(system, user)
+    data = _parse_json_block(text) or {}
+    cats = data.get("categories") if isinstance(data, dict) else data
+    if not isinstance(cats, list):
+        cats = []
+    # clean
+    result = []
+    for c in cats[:8]:
+        if not isinstance(c, dict):
+            continue
+        name = (c.get("name") or "").strip()
+        if not name or name in existing_names:
+            continue
+        result.append({"name": name, "description": (c.get("description") or "").strip()})
+    return {"categories": result}
+
+
+class SuggestContentReq(BaseModel):
+    topic: str = ""
+    count: int = 5
+
+
+@router.post("/sanad/suggest-content")
+async def suggest_content(body: SuggestContentReq):
+    existing = await db.content.find({}, {"_id": 0, "title": 1}).sort("created_at", -1).to_list(50)
+    existing_titles = [c["title"] for c in existing]
+    count = max(1, min(body.count or 5, 10))
+    system = (
+        "أنت سند، خبير محتوى للتصوير الجوي والمونتاج. تقترح أفكار فيديو مبتكرة "
+        "قابلة للتنفيذ في السوق السعودي، بالعربية، مختصرة. أعطِ الرد كـ JSON فقط."
+    )
+    user = (
+        f"اقترح {count} أفكار فيديو مبتكرة{' حول: ' + body.topic if body.topic else ''}.\n"
+        f"عناصر موجودة سابقاً (تجنّب التكرار): {', '.join(existing_titles[:20]) if existing_titles else 'لا يوجد'}\n"
+        "أعد JSON: {\"ideas\":[{\"title\":\"عنوان مختصر\",\"description\":\"شرح تنفيذي في سطرين\"},...]}"
+    )
+    text = await _sanad_ask(system, user)
+    data = _parse_json_block(text) or {}
+    ideas = data.get("ideas") if isinstance(data, dict) else data
+    if not isinstance(ideas, list):
+        ideas = []
+    out = []
+    for i in ideas[:count]:
+        if not isinstance(i, dict):
+            continue
+        title = (i.get("title") or "").strip()
+        if not title:
+            continue
+        out.append({"title": title, "description": (i.get("description") or "").strip()})
+    return {"ideas": out}
+
+
+class SuggestServicesReq(BaseModel):
+    service_type: str = "drone"
+
+
+@router.post("/sanad/suggest-services")
+async def suggest_services(body: SuggestServicesReq):
+    existing = await db.services.find({"service_type": body.service_type}, {"_id": 0, "title": 1}).to_list(50)
+    existing_titles = [s["title"] for s in existing]
+    stype_label = {"drone": "التصوير الجوي بالدرون", "editing": "مونتاج الفيديو"}.get(body.service_type, body.service_type)
+    system = (
+        "أنت سند، خبير خدمات التصوير والمونتاج في السوق السعودي. "
+        "تقترح خدمات إضافية جذّابة قابلة للبيع، بالعربية، مع أسعار سوقية واقعية. أعطِ الرد كـ JSON فقط."
+    )
+    user = (
+        f"اقترح 5 خدمات إضافية جديدة (غير مكررة) لـ{stype_label} مع أسعار سوقية بالريال السعودي.\n"
+        f"الخدمات الموجودة سابقاً (لا تكرر): {', '.join(existing_titles) if existing_titles else 'لا يوجد'}\n"
+        "أعد JSON: {\"services\":[{\"title\":\"اسم الخدمة\",\"description\":\"وصف قصير\",\"price_from\":0,\"price_to\":0},...]}"
+    )
+    text = await _sanad_ask(system, user)
+    data = _parse_json_block(text) or {}
+    services = data.get("services") if isinstance(data, dict) else data
+    if not isinstance(services, list):
+        services = []
+    out = []
+    for s in services[:8]:
+        if not isinstance(s, dict):
+            continue
+        title = (s.get("title") or "").strip()
+        if not title or title in existing_titles:
+            continue
+        out.append({
+            "title": title,
+            "description": (s.get("description") or "").strip(),
+            "price_from": float(s.get("price_from") or 0),
+            "price_to": float(s.get("price_to") or 0),
+            "service_type": body.service_type,
+        })
+    return {"services": out}
 
 
 # ============ Invoice analysis (Finance module) ============

@@ -16,6 +16,8 @@ import { api } from '@/src/api';
 import { AppModal, Chips, Empty, Field } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
 import { SERVICE_LABELS, SERVICE_OPTIONS, openWhatsApp } from '@/src/clientHelpers';
+import { CategoryPicker } from '@/src/CategoryPicker';
+import { SanadPriceOpinion } from '@/src/SanadPriceOpinion';
 
 export default function ClientsScreen() {
   const router = useRouter();
@@ -28,6 +30,7 @@ export default function ClientsScreen() {
     name: '',
     phone: '',
     service_type: 'drone',
+    sub_category: '',
     agreed_price: '',
     source: '',
     drive_link: '',
@@ -60,7 +63,7 @@ export default function ClientsScreen() {
       });
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setModal(false);
-      setForm({ name: '', phone: '', service_type: 'drone', agreed_price: '', source: '', drive_link: '', notes: '' });
+      setForm({ name: '', phone: '', service_type: 'drone', sub_category: '', agreed_price: '', source: '', drive_link: '', notes: '' });
       load();
     } catch {}
     setSaving(false);
@@ -92,7 +95,7 @@ export default function ClientsScreen() {
           <Empty
             icon="people-outline"
             text="لا يوجد عملاء بعد"
-            hint="أضف أول عميل بالزر البرتقالي بالأسفل"
+            hint="أضف أول عميل بالزر بالأسفل"
           />
         }
         renderItem={({ item }) => (
@@ -108,7 +111,12 @@ export default function ClientsScreen() {
                   <View style={styles.serviceChip}>
                     <Text style={styles.serviceText}>{SERVICE_LABELS[item.service_type] || item.service_type}</Text>
                   </View>
-                  {!!item.source && <Text style={styles.source}>{item.source}</Text>}
+                  {!!item.sub_category && (
+                    <View style={styles.subChip}>
+                      <Text style={styles.subChipText}>{item.sub_category}</Text>
+                    </View>
+                  )}
+                  {!!item.source && !item.sub_category && <Text style={styles.source}>{item.source}</Text>}
                 </View>
               </View>
               <TouchableOpacity
@@ -150,9 +158,24 @@ export default function ClientsScreen() {
         <Field label="اسم العميل *" value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} placeholder="مثال: شركة الأفق العقارية" />
         <Field label="رقم الجوال" value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} placeholder="05xxxxxxxx" keyboardType="phone-pad" />
         <Text style={styles.fieldLabel}>نوع الخدمة</Text>
-        <Chips options={SERVICE_OPTIONS} value={form.service_type} onChange={(v) => setForm({ ...form, service_type: v })} />
+        <Chips
+          options={SERVICE_OPTIONS}
+          value={form.service_type}
+          onChange={(v) => setForm({ ...form, service_type: v, sub_category: '' })}
+        />
+        <CategoryPicker
+          serviceType={form.service_type}
+          value={form.sub_category}
+          onChange={(v) => setForm({ ...form, sub_category: v })}
+        />
         <Field label="السعر المتفق عليه (ر.س)" value={form.agreed_price} onChangeText={(v) => setForm({ ...form, agreed_price: v })} placeholder="0" keyboardType="numeric" />
-        <Field label="مصدر العميل" value={form.source} onChangeText={(v) => setForm({ ...form, source: v })} placeholder="انستقرام، توصية، موقع..." />
+        <SanadPriceOpinion
+          serviceType={form.service_type}
+          subCategory={form.sub_category}
+          price={parseFloat(form.agreed_price) || 0}
+          clientName={form.name}
+        />
+        <Field label="مصدر العميل (اختياري)" value={form.source} onChangeText={(v) => setForm({ ...form, source: v })} placeholder="انستقرام، توصية، موقع..." />
         <Field label="رابط Google Drive" value={form.drive_link} onChangeText={(v) => setForm({ ...form, drive_link: v })} placeholder="https://drive.google.com/..." autoCapitalize="none" />
         <Field label="ملاحظات" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} multiline placeholder="تفاصيل إضافية..." />
       </AppModal>
@@ -192,6 +215,8 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 4 },
   serviceChip: { backgroundColor: C.brandSoft, borderRadius: R.pill, paddingHorizontal: 10, paddingVertical: 2 },
   serviceText: { fontFamily: F.semibold, fontSize: 11, color: C.brand },
+  subChip: { backgroundColor: C.surface2, borderRadius: R.pill, paddingHorizontal: 10, paddingVertical: 2 },
+  subChipText: { fontFamily: F.semibold, fontSize: 11, color: C.onSurface2 },
   source: { fontFamily: F.regular, fontSize: 11, color: C.muted },
   waBtn: {
     width: 44,

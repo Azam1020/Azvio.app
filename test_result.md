@@ -101,3 +101,220 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  AZVIO - إضافات وتعديلات على تطبيق إدارة أعمال التصوير الجوي والمونتاج:
+  1. تغيير هوية بصرية: شعار AZVIO الرسمي بدلاً من النصي + لون الهوية #3E9194 بدلاً من البرتقالي.
+  2. اختصار الروابط السريعة إلى رابطين فقط: منصة رائد + موقع azvio.co
+  3. نوع الخدمة الأساسي هو Drone/Editing/كلاهما، مع فئات فرعية للـ Drone (عقاري، فعاليات، إلخ).
+     - الفئات تُضاف بطريقتين: اقتراح من سند أو إضافة يدوية (مع شرح مختصر لسند فقط).
+  4. سجل النشاط للعميل يقبل رفع ملفات (PDF/صور) + ملاحظات نصية.
+  5. عند إدخال السعر، سند يقارنه فوراً بسعر السوق ويعرض رأيه تلقائياً بدون طلب.
+  6. رسوم بيانية حية للدخل والمصاريف والمحتوى في الشاشة الرئيسية.
+  7. الرئيسية قابلة للتخصيص (إظهار/إخفاء الأقسام).
+  8. زر "سند يساعدني" في المحتوى (اقتراح أفكار فيديو) والخدمات (اقتراح خدمات وأسعار).
+
+backend:
+  - task: "Categories CRUD (client sub-categories)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/crud_routes.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Added /api/categories endpoints (list, create, update, delete) with service_type filter. Seeds 7 default categories on startup."
+
+  - task: "Client sub_category field + activity log with attachments"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/crud_routes.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Added sub_category to Client model. LogCreate now accepts attachment_name/mime/data (base64). Added GET /api/clients/{id}/logs/{log_id}/attachment to retrieve stored attachments."
+
+  - task: "Sanad price opinion endpoint (auto market comparison)"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/sanad.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "POST /api/sanad/price-opinion returns {opinion, verdict, market_min, market_max}. Uses gemini-3.5-flash for speed. Tested manually with drone/عقاري/1500 → returned fair verdict + 1000-2500 range."
+
+  - task: "Sanad suggestions: categories/content/services"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/sanad.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Added /api/sanad/suggest-categories, /api/sanad/suggest-content, /api/sanad/suggest-services. All tested manually and returned valid arrays."
+
+  - task: "Sanad action protocol: add_category + add_service"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/sanad.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Extended run_action to support add_category and add_service actions from Sanad chat. Also added sub_category to add_client action."
+
+  - task: "Dashboard time-series endpoint"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/crud_routes.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "GET /api/dashboard/timeseries?months=6 returns per-month income/expense/new_clients arrays."
+
+  - task: "Quick links simplified to 2 default links"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/crud_routes.py"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Seed now only inserts 2 links (منصة رائد + موقع AZVIO). Frontend links.tsx now hardcodes these 2 links so DB is not used for listing."
+
+frontend:
+  - task: "Real AZVIO logo + brand color #3E9194"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/theme.ts, /app/frontend/assets/images/azvio-logo.png, login.tsx, (tabs)/index.tsx, index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Downloaded real AZVIO logo (from user assets), replaced text wordmark on login/index/dashboard. Changed brand color from #D95D39 (orange) to #3E9194 (teal). Updated app icons (icon.png, favicon.png, adaptive-icon.png, splash-image.png)."
+
+  - task: "Client add/edit with sub_category picker + Sanad price opinion inline"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(tabs)/clients.tsx, /app/frontend/app/client/[id].tsx, /app/frontend/src/CategoryPicker.tsx, /app/frontend/src/SanadPriceOpinion.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "CategoryPicker component with manage modal: existing categories chips, manual add, Sanad suggestions. SanadPriceOpinion component: auto-debounced (900ms) after price entry, shows verdict badge (fair/low/high) + opinion text + market range. Verified visually in screenshot."
+
+  - task: "Client activity log with file upload (PDF/images)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/client/[id].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Added expo-document-picker file upload. Reads file as base64 (web via FileReader, native via expo-file-system/legacy) and posts to /api/clients/{id}/logs with attachment fields. View attachment opens data URI in new tab (web) or WebBrowser (native)."
+
+  - task: "Sanad helps me buttons (content + services)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/content.tsx, /app/frontend/app/services.tsx, /app/frontend/src/SanadSuggestModal.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Reusable SanadSuggestModal with topic input (content) or service selector (services). One-tap accept adds item to DB. Verified visually — content suggestions render correctly."
+
+  - task: "Dashboard live charts + personalization"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/(tabs)/index.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Added BarChart (income/expenses last 6 months) and PieChart (content stages breakdown) via react-native-gifted-charts. Personalize modal (⚙ icon in header) lets user toggle 5 widgets on/off; prefs saved in AsyncStorage. Verified visually."
+
+  - task: "Simplified quick links (2 fixed links)"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/links.tsx"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: "Hard-coded 2 links: منصة رائد (raed.gov.sa) + موقع AZVIO (azvio.co). Removed add/edit/delete UI."
+
+metadata:
+  created_by: "main_agent"
+  version: "2.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Categories CRUD (client sub-categories)"
+    - "Client sub_category field + activity log with attachments"
+    - "Sanad price opinion endpoint (auto market comparison)"
+    - "Sanad suggestions: categories/content/services"
+    - "Dashboard time-series endpoint"
+    - "Real AZVIO logo + brand color #3E9194"
+    - "Client add/edit with sub_category picker + Sanad price opinion inline"
+    - "Client activity log with file upload (PDF/images)"
+    - "Sanad helps me buttons (content + services)"
+    - "Dashboard live charts + personalization"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "main"
+      message: |
+        Implemented Phase 1-4 of AZVIO update:
+        1. Brand identity: real AZVIO logo + teal #3E9194 color across all screens.
+        2. Quick links reduced to 2 (منصة رائد + azvio.co).
+        3. Client sub-categories: new Categories collection with 7 seed values. CategoryPicker component with manage modal (manual add + Sanad-suggested).
+        4. Client activity log now supports file uploads (base64 in Mongo). Attachments viewable via signed data URI.
+        5. Sanad price opinion runs auto (debounced 900ms) after price entry - returns verdict + market range + opinion.
+        6. "Sanad helps me" button (✨ icon) in content and services screens - opens suggest modal, one-tap accept.
+        7. Dashboard now has live BarChart (income/expenses 6mo) + PieChart (content stages). Personalize modal via ⚙ icon lets user toggle widgets.
+        
+        All new backend endpoints tested manually via python requests:
+        - POST /api/categories, GET /api/categories, DELETE /api/categories/{id}
+        - POST /api/sanad/price-opinion (returns fair/low/high verdict + range)
+        - POST /api/sanad/suggest-content (returns ideas array)
+        - POST /api/sanad/suggest-services (returns services array)
+        - POST /api/sanad/suggest-categories (returns categories array)
+        - GET /api/dashboard/timeseries (returns months + income + expense arrays)
+        - POST /api/clients/{id}/logs with attachment_data (base64)
+        - GET /api/clients/{id}/logs/{log_id}/attachment
+        
+        Please run comprehensive backend tests on all new endpoints. Test credentials:
+        Info@azvio.co / Azvio@2026 (already whitelisted).
