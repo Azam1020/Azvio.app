@@ -19,9 +19,10 @@ import * as WebBrowser from 'expo-web-browser';
 import { api, apiUpload } from '@/src/api';
 import { AppModal, Chips, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
-import { SERVICE_LABELS, SERVICE_OPTIONS, openWhatsApp } from '@/src/clientHelpers';
+import { SERVICE_LABELS, openWhatsApp } from '@/src/clientHelpers';
 import { CategoryPicker } from '@/src/CategoryPicker';
 import { SanadPriceOpinion } from '@/src/SanadPriceOpinion';
+import { ServiceTypeChips, useServiceTypeLabel } from '@/src/ServiceTypeChips';
 
 const LOG_TYPES = [
   { key: 'note', label: 'ملاحظة' },
@@ -39,6 +40,7 @@ const LOG_ICONS: Record<string, any> = {
 export default function ClientDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const serviceLabels = useServiceTypeLabel();
   const [client, setClient] = useState<any>(null);
   const [logText, setLogText] = useState('');
   const [logType, setLogType] = useState('note');
@@ -190,7 +192,7 @@ export default function ClientDetail() {
   }
 
   const logs = [...(client.logs || [])].reverse();
-  const subtitle = [SERVICE_LABELS[client.service_type], client.sub_category].filter(Boolean).join(' • ');
+  const subtitle = [serviceLabels[client.service_type] || SERVICE_LABELS[client.service_type] || client.service_type, client.sub_category].filter(Boolean).join(' • ');
 
   return (
     <View style={{ flex: 1, backgroundColor: C.surface2 }}>
@@ -321,10 +323,10 @@ export default function ClientDetail() {
         <Field label="اسم العميل" value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} />
         <Field label="رقم الجوال" value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} keyboardType="phone-pad" />
         <Text style={styles.fieldLabel}>نوع الخدمة</Text>
-        <Chips
-          options={SERVICE_OPTIONS}
+        <ServiceTypeChips
           value={form.service_type}
           onChange={(v) => setForm({ ...form, service_type: v, sub_category: '' })}
+          includeBoth
         />
         <CategoryPicker
           serviceType={form.service_type}

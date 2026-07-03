@@ -274,22 +274,17 @@ frontend:
 
 metadata:
   created_by: "main_agent"
-  version: "2.0"
-  test_sequence: 1
+  version: "2.1"
+  test_sequence: 2
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Categories CRUD (client sub-categories)"
-    - "Client sub_category field + activity log with attachments"
-    - "Sanad price opinion endpoint (auto market comparison)"
-    - "Sanad suggestions: categories/content/services"
-    - "Dashboard time-series endpoint"
-    - "Real AZVIO logo + brand color #3E9194"
-    - "Client add/edit with sub_category picker + Sanad price opinion inline"
-    - "Client activity log with file upload (PDF/images)"
-    - "Sanad helps me buttons (content + services)"
-    - "Dashboard live charts + personalization"
+    - "User dashboard settings endpoints (GET/PUT/POST /api/user/settings*)"
+    - "Dashboard widget reordering with cross-device sync (frontend)"
+    - "Calendar default view = week, month/week/list toggle"
+    - "Dynamic ServiceTypeChips in clients/services/pricing/client-detail"
+    - "Finance invoice modal date field now uses DateField picker"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -297,19 +292,25 @@ test_plan:
 agent_communication:
     - agent: "main"
       message: |
-        Phase B (Iteration 3) complete. Implemented per user request:
-        1. **PWA Export**: manifest.json + sw.js in /public, PWA meta in +html.tsx, install button in dashboard (web only).
-        2. **Editable Quick Links**: full CRUD, seeded with 2 defaults (منصة رائد + azvio.co). Old seeds cleaned via one-time migration.
-        3. **Custom Service Types collection**: `/api/service-types` CRUD, seeded drone + editing as defaults (protected from delete). `/api/sanad/explain-service-type` gives description + target audience + typical price + tips.
-        4. **My Pricing (personal price knowledge base)**: `/api/my-pricing` CRUD + new `/pricing` screen where user manages ranges per service_type + sub_category. `/api/sanad/pricing-advice` compares all user pricing vs market and gives per-item verdict.
-        5. **Enhanced Finance screen**: new "الإحصائيات" segment with BarChart (income vs expense 6mo), LineChart (net trend), PieChart (type breakdown), top categories bar list, top clients rank list. Backend: `/api/finance/statistics`.
-        6. **Bank Statement upload**: `/api/finance/statement/analyze` (multipart) uses Gemini 3.1 Pro to extract transactions from PDF/image, then **file is auto-deleted from server immediately** (privacy). `/api/finance/statement/save` inserts selected transactions.
-        7. **Weekly Insights screen** (`/insights`): shows week metrics + Sanad's headline/wins/alerts/focus-next-week. Backend: `/api/insights/weekly` generates fresh AI-powered report on demand.
-        8. **Sanad shortcut in finance**: floating brand button next to bottom actions.
+        Iteration 5 (current session — user request "Dates+Views+Dropdowns+Reordering"):
+        1. **User Preferences Backend**: new `/app/backend/user_settings.py` with:
+           - `GET /api/user/settings` (returns dashboard order + visible, merged with defaults)
+           - `PUT /api/user/settings/dashboard` (validates known widget keys, persists to `user_prefs` collection)
+           - `POST /api/user/settings/dashboard/reset`
+        2. **Dashboard reordering (Home)** — `/app/frontend/app/(tabs)/index.tsx`: 
+           - Replaced flat DEFAULT_WIDGETS toggles with `widgetsOrder` (WidgetKey[]) + `widgetsVisible` (record). 
+           - Customize modal now shows up/down arrow buttons per widget, with disabled state at boundaries, plus visibility switch. 
+           - Prefs synced to backend + cached in AsyncStorage under `azvio_dashboard_prefs_v2`.
+        3. **Calendar** — `/app/frontend/app/calendar.tsx`: default `mode` changed from `month` to `week` (per user request, 12-hour format already in place via `formatTime12h`).
+        4. **ServiceTypeChips component** (new file `/app/frontend/src/ServiceTypeChips.tsx`):
+           - Fetches `/api/service-types` and renders horizontally-scrolling chips.
+           - "+ نوع جديد" chip opens a modal to create a new service type (auto-generates key for Arabic labels).
+           - `useServiceTypeLabel()` hook returns dynamic label map (drone/editing/custom).
+           - Applied in: `clients.tsx` (add modal), `client/[id].tsx` (edit modal), `services.tsx`, `pricing.tsx`. 
+           - Client card list and detail subtitle updated to use dynamic labels.
+        5. **Finance invoice modal** — `/app/frontend/app/(tabs)/finance.tsx`: last remaining plain text date field replaced with `<DateField>` picker.
+        6. Cleaned unused imports (`Chips`, `SERVICE_OPTIONS`, `SelectField`) across affected files.
         
-        All new endpoints verified by testing subagent (37/38 passing; 1 seed issue fixed via one-time migration).
+        Backend restarted successfully. Frontend restarted, Metro bundling OK. Visual verification via screenshots: Login → Dashboard customize modal shows 5 widgets with up/down arrows ✓; Add Client shows ServiceTypeChips with "+ نوع جديد" ✓; Add Service same ✓; Calendar opens in Week view by default ✓.
         
-        **Deferred** (awaiting user credentials):
-        - Google Calendar OAuth (needs GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET)
-        - Supabase Storage (needs SUPABASE_URL + SUPABASE_ANON_KEY + SUPABASE_SERVICE_ROLE_KEY)
-        - Push notification every Saturday (needs deployment build)
+        Please run **backend tests** for the new `/user/settings*` endpoints (auth-gated, valid/invalid inputs, upsert behavior, reset). Frontend visually verified but no e2e run yet.

@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
 import { api, apiUpload } from '@/src/api';
 import { AppModal, Chips, Empty, Field, confirmAsync } from '@/src/ui';
+import { DateField } from '@/src/DateTimePicker';
 import { C, F, R, fmt, shadow } from '@/src/theme';
 
 const TX_TYPES = [
@@ -607,7 +608,7 @@ export default function FinanceScreen() {
         <Field label="المبلغ (ر.س) *" value={form.amount} onChangeText={(v) => setForm({ ...form, amount: v })} placeholder="0" keyboardType="numeric" />
         <Field label="الوصف" value={form.description} onChangeText={(v) => setForm({ ...form, description: v })} placeholder="مثال: دفعة مشروع، بنزين، اشتراك Adobe..." />
         <Field label="التصنيف" value={form.category} onChangeText={(v) => setForm({ ...form, category: v })} placeholder="معدات، تسويق، مواصلات..." />
-        <Field label="التاريخ (YYYY-MM-DD)" value={form.date} onChangeText={(v) => setForm({ ...form, date: v })} placeholder="اتركه فارغاً لتاريخ اليوم" autoCapitalize="none" />
+        <DateField label="التاريخ" value={form.date} onChange={(v) => setForm({ ...form, date: v })} />
         {form.type === 'debt' && (
           <>
             <Text style={styles.fieldLabel}>اتجاه الدين</Text>
@@ -645,7 +646,7 @@ export default function FinanceScreen() {
         <Field label="المبلغ (ر.س)" value={form.amount} onChangeText={(v) => setForm({ ...form, amount: v })} keyboardType="numeric" />
         <Field label="الوصف" value={form.description} onChangeText={(v) => setForm({ ...form, description: v })} />
         <Field label="التصنيف" value={form.category} onChangeText={(v) => setForm({ ...form, category: v })} />
-        <Field label="التاريخ" value={form.date} onChangeText={(v) => setForm({ ...form, date: v })} autoCapitalize="none" />
+        <DateField label="التاريخ" value={form.date} onChange={(v) => setForm({ ...form, date: v })} />
       </AppModal>
 
       {/* Bank statement extraction modal */}

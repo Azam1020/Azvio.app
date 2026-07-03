@@ -1,0 +1,98 @@
+"""User settings/preferences endpoints — dashboard widget order, visibility, etc."""
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from auth import get_current_user
+from database import db
+
+router = APIRouter(dependencies=[Depends(get_current_user)])
+
+
+DEFAULT_WIDGETS_ORDER = ["stats", "incomeChart", "contentChart", "nav", "events"]
+DEFAULT_WIDGETS_VISIBLE: Dict[str, bool] = {
+    "stats": True,
+    "incomeChart": True,
+    "contentChart": True,
+    "nav": True,
+    "events": True,
+}
+
+
+class DashboardPrefsUpdate(BaseModel):
+    order: Optional[List[str]] = None
+    visible: Optional[Dict[str, bool]] = None
+
+
+def _default_prefs() -> Dict[str, Any]:
+    return {
+        "dashboard": {
+            "order": DEFAULT_WIDGETS_ORDER[:],
+            "visible": dict(DEFAULT_WIDGETS_VISIBLE),
+        }
+    }
+
+
+async def _get_user_prefs(user_id: str) -> Dict[str, Any]:
+    doc = await db.user_prefs.find_one({"user_id": user_id}, {"_id": 0})
+    if not doc:
+        return _default_prefs()
+    dashboard = doc.get("dashboard") or {}
+    # Merge with defaults so newly added widgets always appear
+    saved_order = dashboard.get("order") or []
+    saved_visible = dashboard.get("visible") or {}
+    # Ensure all default widget keys exist in order
+    order = [w for w in saved_order if w in DEFAULT_WIDGETS_ORDER]
+    for w in DEFAULT_WIDGETS_ORDER:
+        if w not in order:
+            order.append(w)
+    visible = {**DEFAULT_WIDGETS_VISIBLE, **{k: v for k, v in saved_visible.items() if k in DEFAULT_WIDGETS_ORDER}}
+    return {"dashboard": {"order": order, "visible": visible}}
+
+
+@router.get("/user/settings")
+async def get_settings(user=Depends(get_current_user)):
+    return await _get_user_prefs(user["id"])
+
+
+@router.put("/user/settings/dashboard")
+async def update_dashboard(body: DashboardPrefsUpdate, user=Depends(get_current_user)):
+    prefs = await _get_user_prefs(user["id"])
+    dashboard = prefs["dashboard"]
+    if body.order is not None:
+        # Validate: only known widget keys, no dupes, must cover all defaults
+        cleaned = []
+        seen = set()
+        for k in body.order:
+            if k in DEFAULT_WIDGETS_ORDER and k not in seen:
+                cleaned.append(k)
+                seen.add(k)
+        # Add any missing
+        for k in DEFAULT_WIDGETS_ORDER:
+            if k not in seen:
+                cleaned.append(k)
+        dashboard["order"] = cleaned
+    if body.visible is not None:
+        merged = {**DEFAULT_WIDGETS_VISIBLE}
+        for k, v in body.visible.items():
+            if k in DEFAULT_WIDGETS_ORDER:
+                merged[k] = bool(v)
+        dashboard["visible"] = merged
+    await db.user_prefs.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"user_id": user["id"], "dashboard": dashboard}},
+        upsert=True,
+    )
+    return {"dashboard": dashboard}
+
+
+@router.post("/user/settings/dashboard/reset")
+async def reset_dashboard(user=Depends(get_current_user)):
+    default = _default_prefs()
+    await db.user_prefs.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"user_id": user["id"], "dashboard": default["dashboard"]}},
+        upsert=True,
+    )
+    return default

@@ -67,7 +67,9 @@ const shortMonth = (ym: string) => {
 
 type WidgetKey = 'stats' | 'incomeChart' | 'contentChart' | 'nav' | 'events';
 
-const DEFAULT_WIDGETS: Record<WidgetKey, boolean> = {
+const DEFAULT_ORDER: WidgetKey[] = ['stats', 'incomeChart', 'contentChart', 'nav', 'events'];
+
+const DEFAULT_VISIBLE: Record<WidgetKey, boolean> = {
   stats: true,
   incomeChart: true,
   contentChart: true,
@@ -75,15 +77,30 @@ const DEFAULT_WIDGETS: Record<WidgetKey, boolean> = {
   events: true,
 };
 
-const WIDGET_META: { key: WidgetKey; label: string; icon: any }[] = [
-  { key: 'stats', label: 'إحصائيات سريعة', icon: 'stats-chart' },
-  { key: 'incomeChart', label: 'رسم الدخل والمصاريف', icon: 'bar-chart' },
-  { key: 'contentChart', label: 'توزيع المحتوى', icon: 'pie-chart' },
-  { key: 'nav', label: 'أزرار الأقسام', icon: 'apps' },
-  { key: 'events', label: 'المواعيد القادمة', icon: 'calendar' },
-];
+const WIDGET_META: Record<WidgetKey, { label: string; icon: any }> = {
+  stats: { label: 'إحصائيات سريعة', icon: 'stats-chart' },
+  incomeChart: { label: 'رسم الدخل والمصاريف', icon: 'bar-chart' },
+  contentChart: { label: 'توزيع المحتوى', icon: 'pie-chart' },
+  nav: { label: 'أزرار الأقسام', icon: 'apps' },
+  events: { label: 'المواعيد القادمة', icon: 'calendar' },
+};
 
-const WIDGET_KEY = 'azvio_dashboard_widgets';
+const PREFS_CACHE_KEY = 'azvio_dashboard_prefs_v2';
+
+function sanitizeOrder(order: any[]): WidgetKey[] {
+  const clean: WidgetKey[] = [];
+  const seen = new Set<string>();
+  for (const k of order || []) {
+    if (DEFAULT_ORDER.includes(k) && !seen.has(k)) {
+      clean.push(k);
+      seen.add(k);
+    }
+  }
+  for (const k of DEFAULT_ORDER) {
+    if (!seen.has(k)) clean.push(k);
+  }
+  return clean;
+}
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -94,7 +111,8 @@ export default function Dashboard() {
   const [series, setSeries] = useState<Series | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(false);
-  const [widgets, setWidgets] = useState<Record<WidgetKey, boolean>>(DEFAULT_WIDGETS);
+  const [widgetsOrder, setWidgetsOrder] = useState<WidgetKey[]>(DEFAULT_ORDER);
+  const [widgetsVisible, setWidgetsVisible] = useState<Record<WidgetKey, boolean>>(DEFAULT_VISIBLE);
   const [installAvailable, setInstallAvailable] = useState(false);
 
   // Listen for PWA install prompt (web only)
@@ -119,20 +137,56 @@ export default function Dashboard() {
     setInstallAvailable(false);
   };
 
-  // Load widget prefs
+  // Load widget prefs (backend first, cache fallback)
   useEffect(() => {
     (async () => {
-      const saved = await storage.getItem<any>(WIDGET_KEY, null);
-      if (saved && typeof saved === 'object') {
-        setWidgets({ ...DEFAULT_WIDGETS, ...saved });
+      const cached = await storage.getItem<any>(PREFS_CACHE_KEY, null);
+      if (cached?.order && cached?.visible) {
+        setWidgetsOrder(sanitizeOrder(cached.order));
+        setWidgetsVisible({ ...DEFAULT_VISIBLE, ...cached.visible });
       }
+      try {
+        const r = await api('/user/settings');
+        const dash = r?.dashboard;
+        if (dash?.order?.length) {
+          const order = sanitizeOrder(dash.order);
+          const visible = { ...DEFAULT_VISIBLE, ...(dash.visible || {}) };
+          setWidgetsOrder(order);
+          setWidgetsVisible(visible);
+          await storage.setItem(PREFS_CACHE_KEY, { order, visible });
+        }
+      } catch {}
     })();
   }, []);
 
-  const saveWidgets = async (next: Record<WidgetKey, boolean>) => {
-    setWidgets(next);
-    await storage.setItem(WIDGET_KEY, next);
+  const savePrefs = async (nextOrder: WidgetKey[], nextVisible: Record<WidgetKey, boolean>) => {
+    const order = sanitizeOrder(nextOrder);
+    setWidgetsOrder(order);
+    setWidgetsVisible(nextVisible);
+    await storage.setItem(PREFS_CACHE_KEY, { order, visible: nextVisible });
+    try {
+      await api('/user/settings/dashboard', {
+        method: 'PUT',
+        body: JSON.stringify({ order, visible: nextVisible }),
+      });
+    } catch {}
   };
+
+  const toggleVisible = (k: WidgetKey, v: boolean) => {
+    savePrefs(widgetsOrder, { ...widgetsVisible, [k]: v });
+  };
+
+  const moveWidget = (k: WidgetKey, dir: -1 | 1) => {
+    const idx = widgetsOrder.indexOf(k);
+    if (idx < 0) return;
+    const nextIdx = idx + dir;
+    if (nextIdx < 0 || nextIdx >= widgetsOrder.length) return;
+    const next = [...widgetsOrder];
+    [next[idx], next[nextIdx]] = [next[nextIdx], next[idx]];
+    savePrefs(next, widgetsVisible);
+  };
+
+  const resetPrefs = () => savePrefs(DEFAULT_ORDER, DEFAULT_VISIBLE);
 
   const load = useCallback(async () => {
     try {
@@ -247,199 +301,234 @@ export default function Dashboard() {
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} />}
       >
-        {/* Stats */}
-        {widgets.stats && (
-          <>
-            <View style={styles.statsRow}>
-              <View style={[styles.statCard, { backgroundColor: C.brand }]}>
-                <Ionicons name="trending-up" size={20} color="rgba(255,255,255,0.85)" />
-                <Text style={[styles.statValue, { color: '#FFF' }]}>{fmt(data?.month_income || 0)}</Text>
-                <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.85)' }]}>دخل هذا الشهر</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Ionicons name="trending-down" size={20} color={C.error} />
-                <Text style={styles.statValue}>{fmt(data?.month_expenses || 0)}</Text>
-                <Text style={styles.statLabel}>مصاريف الشهر</Text>
-              </View>
-            </View>
-            <View style={styles.statsRow}>
-              <View style={styles.statCard}>
-                <Ionicons name="hourglass" size={20} color={C.warning} />
-                <Text style={styles.statValue}>{data?.clients_in_progress ?? 0}</Text>
-                <Text style={styles.statLabel}>مشاريع قيد التنفيذ</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Ionicons name="checkmark-circle" size={20} color={C.success} />
-                <Text style={styles.statValue}>{data?.clients_delivered ?? 0}</Text>
-                <Text style={styles.statLabel}>مشاريع مُسلّمة</Text>
-              </View>
-            </View>
-          </>
-        )}
-
-        {/* Income Chart */}
-        {widgets.incomeChart && series && series.months.length > 0 && (
-          <View style={styles.chartCard}>
-            <View style={styles.chartHeader}>
-              <View>
-                <Text style={styles.chartTitle}>الدخل والمصاريف</Text>
-                <Text style={styles.chartSubtitle}>آخر 6 أشهر</Text>
-              </View>
-              <View style={styles.legendRow}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: C.brand }]} />
-                  <Text style={styles.legendText}>دخل</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#E5A4A4' }]} />
-                  <Text style={styles.legendText}>مصاريف</Text>
-                </View>
-              </View>
-            </View>
-            <View style={{ alignItems: 'center', marginTop: 6 }}>
-              <BarChart
-                data={barChartData}
-                width={chartWidth}
-                height={160}
-                barWidth={12}
-                barBorderRadius={4}
-                noOfSections={4}
-                maxValue={maxY}
-                yAxisTextStyle={{ color: C.muted, fontSize: 10, fontFamily: F.regular }}
-                xAxisLabelTextStyle={{ color: C.onSurface2, fontSize: 10, fontFamily: F.semibold }}
-                yAxisThickness={0}
-                xAxisThickness={0}
-                rulesColor={C.border}
-                rulesType="solid"
-                initialSpacing={10}
-                endSpacing={10}
-                disableScroll
-                hideRules={false}
-                yAxisLabelWidth={40}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* Content Chart */}
-        {widgets.contentChart && contentTotal > 0 && (
-          <View style={styles.chartCard}>
-            <View style={styles.chartHeader}>
-              <View>
-                <Text style={styles.chartTitle}>توزيع المحتوى</Text>
-                <Text style={styles.chartSubtitle}>{contentTotal} عنصر إجمالاً</Text>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
-              <PieChart
-                donut
-                data={pieData}
-                radius={70}
-                innerRadius={45}
-                textColor="#FFF"
-                textSize={11}
-                showText
-                centerLabelComponent={() => (
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontFamily: F.bold, fontSize: 20, color: C.onSurface }}>{contentTotal}</Text>
-                    <Text style={{ fontFamily: F.regular, fontSize: 11, color: C.muted }}>عنصر</Text>
+        {widgetsOrder.filter((k) => widgetsVisible[k]).map((key) => {
+          if (key === 'stats') {
+            return (
+              <React.Fragment key={key}>
+                <View style={styles.statsRow}>
+                  <View style={[styles.statCard, { backgroundColor: C.brand }]}>
+                    <Ionicons name="trending-up" size={20} color="rgba(255,255,255,0.85)" />
+                    <Text style={[styles.statValue, { color: '#FFF' }]}>{fmt(data?.month_income || 0)}</Text>
+                    <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.85)' }]}>دخل هذا الشهر</Text>
                   </View>
+                  <View style={styles.statCard}>
+                    <Ionicons name="trending-down" size={20} color={C.error} />
+                    <Text style={styles.statValue}>{fmt(data?.month_expenses || 0)}</Text>
+                    <Text style={styles.statLabel}>مصاريف الشهر</Text>
+                  </View>
+                </View>
+                <View style={styles.statsRow}>
+                  <View style={styles.statCard}>
+                    <Ionicons name="hourglass" size={20} color={C.warning} />
+                    <Text style={styles.statValue}>{data?.clients_in_progress ?? 0}</Text>
+                    <Text style={styles.statLabel}>مشاريع قيد التنفيذ</Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <Ionicons name="checkmark-circle" size={20} color={C.success} />
+                    <Text style={styles.statValue}>{data?.clients_delivered ?? 0}</Text>
+                    <Text style={styles.statLabel}>مشاريع مُسلّمة</Text>
+                  </View>
+                </View>
+              </React.Fragment>
+            );
+          }
+
+          if (key === 'incomeChart' && series && series.months.length > 0) {
+            return (
+              <View key={key} style={styles.chartCard}>
+                <View style={styles.chartHeader}>
+                  <View>
+                    <Text style={styles.chartTitle}>الدخل والمصاريف</Text>
+                    <Text style={styles.chartSubtitle}>آخر 6 أشهر</Text>
+                  </View>
+                  <View style={styles.legendRow}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: C.brand }]} />
+                      <Text style={styles.legendText}>دخل</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: '#E5A4A4' }]} />
+                      <Text style={styles.legendText}>مصاريف</Text>
+                    </View>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'center', marginTop: 6 }}>
+                  <BarChart
+                    data={barChartData}
+                    width={chartWidth}
+                    height={160}
+                    barWidth={12}
+                    barBorderRadius={4}
+                    noOfSections={4}
+                    maxValue={maxY}
+                    yAxisTextStyle={{ color: C.muted, fontSize: 10, fontFamily: F.regular }}
+                    xAxisLabelTextStyle={{ color: C.onSurface2, fontSize: 10, fontFamily: F.semibold }}
+                    yAxisThickness={0}
+                    xAxisThickness={0}
+                    rulesColor={C.border}
+                    rulesType="solid"
+                    initialSpacing={10}
+                    endSpacing={10}
+                    disableScroll
+                    hideRules={false}
+                    yAxisLabelWidth={40}
+                  />
+                </View>
+              </View>
+            );
+          }
+
+          if (key === 'contentChart' && contentTotal > 0) {
+            return (
+              <View key={key} style={styles.chartCard}>
+                <View style={styles.chartHeader}>
+                  <View>
+                    <Text style={styles.chartTitle}>توزيع المحتوى</Text>
+                    <Text style={styles.chartSubtitle}>{contentTotal} عنصر إجمالاً</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+                  <PieChart
+                    donut
+                    data={pieData}
+                    radius={70}
+                    innerRadius={45}
+                    textColor="#FFF"
+                    textSize={11}
+                    showText
+                    centerLabelComponent={() => (
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={{ fontFamily: F.bold, fontSize: 20, color: C.onSurface }}>{contentTotal}</Text>
+                        <Text style={{ fontFamily: F.regular, fontSize: 11, color: C.muted }}>عنصر</Text>
+                      </View>
+                    )}
+                  />
+                  <View style={{ gap: 8 }}>
+                    {(['idea', 'filming', 'editing', 'published'] as const).map((s) => (
+                      <View key={s} style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: STAGE_COLORS[s] }]} />
+                        <Text style={styles.legendText}>
+                          {STAGE_LABELS[s]} ({data?.content_stages[s] || 0})
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            );
+          }
+
+          if (key === 'nav') {
+            return (
+              <React.Fragment key={key}>
+                <Text style={styles.sectionTitle}>الأقسام</Text>
+                <View style={styles.navGrid}>
+                  {navCards.map((c) => (
+                    <TouchableOpacity
+                      key={c.title}
+                      style={styles.navCard}
+                      onPress={() => router.push(c.href as any)}
+                      testID={`nav-${c.href.slice(1)}`}
+                    >
+                      <View style={styles.navIcon}>
+                        <Ionicons name={c.icon} size={22} color={C.brand} />
+                      </View>
+                      <Text style={styles.navTitle}>{c.title}</Text>
+                      <Text style={styles.navSub}>{c.sub}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </React.Fragment>
+            );
+          }
+
+          if (key === 'events') {
+            return (
+              <React.Fragment key={key}>
+                <Text style={styles.sectionTitle}>المواعيد القادمة</Text>
+                {(data?.upcoming_events?.length ?? 0) === 0 ? (
+                  <View style={styles.emptyEvents}>
+                    <Ionicons name="calendar-outline" size={22} color={C.muted} />
+                    <Text style={styles.emptyText}>لا توجد مواعيد قادمة — أضفها من التقويم</Text>
+                  </View>
+                ) : (
+                  data!.upcoming_events.map((e) => {
+                    const meta = EVENT_LABELS[e.event_type] || EVENT_LABELS.other;
+                    return (
+                      <View key={e.id} style={styles.eventCard}>
+                        <View style={[styles.eventIcon, { backgroundColor: `${meta.color}18` }]}>
+                          <Ionicons name={meta.icon} size={18} color={meta.color} />
+                        </View>
+                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                          <Text style={styles.eventTitle}>{e.title}</Text>
+                          <Text style={styles.eventSub}>
+                            {meta.label} • {e.date}
+                            {e.time ? ` • ${e.time}` : ''}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })
                 )}
-              />
-              <View style={{ gap: 8 }}>
-                {(['idea', 'filming', 'editing', 'published'] as const).map((s) => (
-                  <View key={s} style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: STAGE_COLORS[s] }]} />
-                    <Text style={styles.legendText}>
-                      {STAGE_LABELS[s]} ({data?.content_stages[s] || 0})
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-        )}
+              </React.Fragment>
+            );
+          }
 
-        {/* Nav grid */}
-        {widgets.nav && (
-          <>
-            <Text style={styles.sectionTitle}>الأقسام</Text>
-            <View style={styles.navGrid}>
-              {navCards.map((c) => (
-                <TouchableOpacity
-                  key={c.title}
-                  style={styles.navCard}
-                  onPress={() => router.push(c.href as any)}
-                  testID={`nav-${c.href.slice(1)}`}
-                >
-                  <View style={styles.navIcon}>
-                    <Ionicons name={c.icon} size={22} color={C.brand} />
-                  </View>
-                  <Text style={styles.navTitle}>{c.title}</Text>
-                  <Text style={styles.navSub}>{c.sub}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </>
-        )}
-
-        {/* Upcoming events */}
-        {widgets.events && (
-          <>
-            <Text style={styles.sectionTitle}>المواعيد القادمة</Text>
-            {(data?.upcoming_events?.length ?? 0) === 0 ? (
-              <View style={styles.emptyEvents}>
-                <Ionicons name="calendar-outline" size={22} color={C.muted} />
-                <Text style={styles.emptyText}>لا توجد مواعيد قادمة — أضفها من التقويم</Text>
-              </View>
-            ) : (
-              data!.upcoming_events.map((e) => {
-                const meta = EVENT_LABELS[e.event_type] || EVENT_LABELS.other;
-                return (
-                  <View key={e.id} style={styles.eventCard}>
-                    <View style={[styles.eventIcon, { backgroundColor: `${meta.color}18` }]}>
-                      <Ionicons name={meta.icon} size={18} color={meta.color} />
-                    </View>
-                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                      <Text style={styles.eventTitle}>{e.title}</Text>
-                      <Text style={styles.eventSub}>
-                        {meta.label} • {e.date}
-                        {e.time ? ` • ${e.time}` : ''}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </>
-        )}
+          return null;
+        })}
       </ScrollView>
 
       {/* Customize dashboard modal */}
       <AppModal visible={customizeOpen} title="تخصيص الرئيسية" onClose={() => setCustomizeOpen(false)}>
         <Text style={styles.customHint}>
-          فعّل أو أخفِ الأقسام التي تريد ظهورها في الشاشة الرئيسية. تُحفظ التفضيلات على جهازك.
+          رتّب الأقسام بالأسهم واختر ما تريد إظهاره. تُحفظ التفضيلات على حسابك.
         </Text>
-        {WIDGET_META.map((w) => (
-          <View key={w.key} style={styles.widgetRow}>
-            <Switch
-              value={widgets[w.key]}
-              onValueChange={(v) => saveWidgets({ ...widgets, [w.key]: v })}
-              trackColor={{ true: C.brand, false: C.border }}
-              thumbColor="#FFF"
-              testID={`toggle-${w.key}`}
-            />
-            <View style={{ flex: 1, alignItems: 'flex-end' }}>
-              <Text style={styles.widgetLabel}>{w.label}</Text>
+        {widgetsOrder.map((k, idx) => {
+          const meta = WIDGET_META[k];
+          const isFirst = idx === 0;
+          const isLast = idx === widgetsOrder.length - 1;
+          return (
+            <View key={k} style={styles.widgetRow}>
+              <View style={styles.orderBtns}>
+                <TouchableOpacity
+                  onPress={() => moveWidget(k, -1)}
+                  disabled={isFirst}
+                  style={[styles.orderBtn, isFirst && styles.orderBtnDisabled]}
+                  testID={`move-up-${k}`}
+                  hitSlop={4}
+                >
+                  <Ionicons name="chevron-up" size={16} color={isFirst ? C.muted : C.brand} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => moveWidget(k, 1)}
+                  disabled={isLast}
+                  style={[styles.orderBtn, isLast && styles.orderBtnDisabled]}
+                  testID={`move-down-${k}`}
+                  hitSlop={4}
+                >
+                  <Ionicons name="chevron-down" size={16} color={isLast ? C.muted : C.brand} />
+                </TouchableOpacity>
+              </View>
+              <Switch
+                value={widgetsVisible[k]}
+                onValueChange={(v) => toggleVisible(k, v)}
+                trackColor={{ true: C.brand, false: C.border }}
+                thumbColor="#FFF"
+                testID={`toggle-${k}`}
+              />
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={styles.widgetLabel}>{meta.label}</Text>
+                <Text style={styles.widgetOrderText}>الترتيب: {idx + 1}</Text>
+              </View>
+              <View style={styles.widgetIcon}>
+                <Ionicons name={meta.icon} size={18} color={C.brand} />
+              </View>
             </View>
-            <View style={styles.widgetIcon}>
-              <Ionicons name={w.icon} size={18} color={C.brand} />
-            </View>
-          </View>
-        ))}
+          );
+        })}
         <TouchableOpacity
           style={styles.resetBtn}
-          onPress={() => saveWidgets(DEFAULT_WIDGETS)}
+          onPress={resetPrefs}
           testID="reset-widgets-btn"
         >
           <Text style={styles.resetText}>استعادة الإعدادات الافتراضية</Text>
@@ -556,6 +645,19 @@ const styles = StyleSheet.create({
   },
   widgetIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.brandSoft, alignItems: 'center', justifyContent: 'center' },
   widgetLabel: { fontFamily: F.semibold, fontSize: 14, color: C.onSurface },
+  widgetOrderText: { fontFamily: F.regular, fontSize: 10, color: C.muted, marginTop: 2 },
+  orderBtns: { flexDirection: 'column', gap: 2 },
+  orderBtn: {
+    width: 28,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: C.brandSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(62,145,148,0.25)',
+  },
+  orderBtnDisabled: { backgroundColor: C.surface2, borderColor: C.border, opacity: 0.5 },
   resetBtn: { marginTop: 16, alignItems: 'center', paddingVertical: 8 },
   resetText: { fontFamily: F.semibold, fontSize: 12, color: C.brand },
 });

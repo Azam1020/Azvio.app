@@ -10,14 +10,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
-import { AppModal, Chips, Empty, Field, ScreenHeader, confirmAsync } from '@/src/ui';
+import { AppModal, Empty, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { CategoryPicker } from '@/src/CategoryPicker';
+import { ServiceTypeChips, useServiceTypeLabel } from '@/src/ServiceTypeChips';
 import { C, F, R, fmt, shadow } from '@/src/theme';
-
-const SERVICE_OPTIONS = [
-  { key: 'drone', label: 'درون' },
-  { key: 'editing', label: 'مونتاج' },
-];
 
 const emptyForm = {
   service_type: 'drone',
@@ -29,6 +25,7 @@ const emptyForm = {
 };
 
 export default function MyPricingScreen() {
+  const serviceLabels = useServiceTypeLabel();
   const [items, setItems] = useState<any[]>([]);
   const [modal, setModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -193,7 +190,7 @@ export default function MyPricingScreen() {
           <View key={stype} style={{ marginBottom: 16 }}>
             <View style={styles.groupHeader}>
               <Text style={styles.groupTitle}>
-                {stype === 'drone' ? 'التصوير الجوي' : stype === 'editing' ? 'المونتاج' : stype}
+                {serviceLabels[stype] || stype}
               </Text>
               <Text style={styles.groupCount}>{list.length}</Text>
             </View>
@@ -240,8 +237,7 @@ export default function MyPricingScreen() {
         saving={saving}
       >
         <Text style={styles.fieldLabel}>نوع الخدمة</Text>
-        <Chips
-          options={SERVICE_OPTIONS}
+        <ServiceTypeChips
           value={form.service_type}
           onChange={(v) => setForm({ ...form, service_type: v, sub_category: '' })}
         />

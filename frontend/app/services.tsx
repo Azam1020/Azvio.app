@@ -3,19 +3,21 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
-import { AppModal, Chips, Empty, Field, ScreenHeader, confirmAsync } from '@/src/ui';
+import { AppModal, Empty, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
 import { SanadSuggestModal } from '@/src/SanadSuggestModal';
 import { suggestServices } from '@/src/clientHelpers';
+import { ServiceTypeChips, useServiceTypeLabel } from '@/src/ServiceTypeChips';
 
-const TYPE_META: Record<string, { label: string; icon: any }> = {
-  drone: { label: 'درون', icon: 'airplane' },
-  editing: { label: 'مونتاج', icon: 'cut' },
+const TYPE_ICONS: Record<string, any> = {
+  drone: 'airplane',
+  editing: 'cut',
 };
 
 const emptyForm = { title: '', description: '', service_type: 'drone', price_from: '', price_to: '' };
 
 export default function ServicesScreen() {
+  const serviceLabels = useServiceTypeLabel();
   const [services, setServices] = useState<any[]>([]);
   const [modal, setModal] = useState(false);
   const [sanadOpen, setSanadOpen] = useState(false);
@@ -100,16 +102,17 @@ export default function ServicesScreen() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         {services.length === 0 && <Empty icon="briefcase-outline" text="لا توجد خدمات" hint="أضف خدماتك وأسعارها" />}
         {services.map((s) => {
-          const meta = TYPE_META[s.service_type] || TYPE_META.drone;
+          const icon = TYPE_ICONS[s.service_type] || 'briefcase';
+          const label = serviceLabels[s.service_type] || s.service_type;
           return (
             <View key={s.id} style={styles.card}>
               <View style={styles.cardHead}>
                 <View style={styles.iconWrap}>
-                  <Ionicons name={meta.icon} size={22} color={C.brand} />
+                  <Ionicons name={icon} size={22} color={C.brand} />
                 </View>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                   <Text style={styles.cardTitle}>{s.title}</Text>
-                  <Text style={styles.cardType}>{meta.label}</Text>
+                  <Text style={styles.cardType}>{label}</Text>
                 </View>
                 <View style={{ flexDirection: 'row-reverse', gap: 12 }}>
                   <TouchableOpacity onPress={() => openEdit(s)} hitSlop={6}>
@@ -142,11 +145,7 @@ export default function ServicesScreen() {
         <Field label="اسم الخدمة *" value={form.title} onChangeText={(v) => setForm({ ...form, title: v })} />
         <Field label="الوصف" value={form.description} onChangeText={(v) => setForm({ ...form, description: v })} multiline />
         <Text style={styles.fieldLabel}>النوع</Text>
-        <Chips
-          options={[
-            { key: 'drone', label: 'درون' },
-            { key: 'editing', label: 'مونتاج' },
-          ]}
+        <ServiceTypeChips
           value={form.service_type}
           onChange={(v) => setForm({ ...form, service_type: v })}
         />

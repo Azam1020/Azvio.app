@@ -13,15 +13,17 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { api } from '@/src/api';
-import { AppModal, Chips, Empty, Field } from '@/src/ui';
+import { AppModal, Empty, Field } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
-import { SERVICE_LABELS, SERVICE_OPTIONS, openWhatsApp } from '@/src/clientHelpers';
+import { SERVICE_LABELS, openWhatsApp } from '@/src/clientHelpers';
 import { CategoryPicker } from '@/src/CategoryPicker';
 import { SanadPriceOpinion } from '@/src/SanadPriceOpinion';
+import { ServiceTypeChips, useServiceTypeLabel } from '@/src/ServiceTypeChips';
 
 export default function ClientsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const serviceLabels = useServiceTypeLabel();
   const [clients, setClients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
@@ -109,7 +111,7 @@ export default function ClientsScreen() {
                 <Text style={styles.name}>{item.name}</Text>
                 <View style={styles.metaRow}>
                   <View style={styles.serviceChip}>
-                    <Text style={styles.serviceText}>{SERVICE_LABELS[item.service_type] || item.service_type}</Text>
+                    <Text style={styles.serviceText}>{serviceLabels[item.service_type] || SERVICE_LABELS[item.service_type] || item.service_type}</Text>
                   </View>
                   {!!item.sub_category && (
                     <View style={styles.subChip}>
@@ -158,10 +160,10 @@ export default function ClientsScreen() {
         <Field label="اسم العميل *" value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} placeholder="مثال: شركة الأفق العقارية" />
         <Field label="رقم الجوال" value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} placeholder="05xxxxxxxx" keyboardType="phone-pad" />
         <Text style={styles.fieldLabel}>نوع الخدمة</Text>
-        <Chips
-          options={SERVICE_OPTIONS}
+        <ServiceTypeChips
           value={form.service_type}
           onChange={(v) => setForm({ ...form, service_type: v, sub_category: '' })}
+          includeBoth
         />
         <CategoryPicker
           serviceType={form.service_type}
