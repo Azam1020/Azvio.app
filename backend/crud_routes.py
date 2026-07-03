@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from auth import get_current_user
@@ -106,23 +106,105 @@ async def add_client_log(client_id: str, body: LogCreate):
         "created_at": now_iso(),
     }
     if body.attachment_data:
-        log["attachment"] = {
-            "name": body.attachment_name or "ملف",
-            "mime": body.attachment_mime or "application/octet-stream",
-            "data": body.attachment_data,
-        }
+        # Legacy path: base64 payload (backwards compat / fallback if Supabase not configured)
+        try:
+            import base64 as _b64
+            from supabase_storage import is_configured, upload_bytes
+            if is_configured():
+                raw = _b64.b64decode(body.attachment_data)
+                up = await upload_bytes(
+                    client_id=client_id,
+                    log_id=log["id"],
+                    filename=body.attachment_name or "attachment",
+                    data=raw,
+                    content_type=body.attachment_mime or "application/octet-stream",
+                )
+                log["attachment"] = {
+                    "name": up["name"],
+                    "mime": up["mime"],
+                    "path": up["path"],  # Supabase storage path
+                }
+            else:
+                # Legacy fallback
+                log["attachment"] = {
+                    "name": body.attachment_name or "ملف",
+                    "mime": body.attachment_mime or "application/octet-stream",
+                    "data": body.attachment_data,
+                }
+        except Exception as e:
+            log["attachment"] = {
+                "name": body.attachment_name or "ملف",
+                "mime": body.attachment_mime or "application/octet-stream",
+                "data": body.attachment_data,
+                "storage_error": str(e)[:120],
+            }
     r = await db.clients.update_one({"id": client_id}, {"$push": {"logs": log}, "$set": {"updated_at": now_iso()}})
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="العميل غير موجود")
     # trimmed response (no big base64)
     resp = {**log}
-    if "attachment" in resp:
+    if "attachment" in resp and "data" in resp["attachment"]:
         resp["attachment"] = {"name": resp["attachment"]["name"], "mime": resp["attachment"]["mime"]}
     return resp
 
 
+@router.post("/clients/{client_id}/logs/upload")
+async def upload_client_log_file(
+    client_id: str,
+    file: UploadFile = File(...),
+    text: str = Form(""),
+    log_type: str = Form("file"),
+):
+    """Multipart upload for a client log attachment. Stores in Supabase Storage."""
+    from supabase_storage import is_configured, upload_bytes
+    if not is_configured():
+        raise HTTPException(status_code=500, detail="Supabase غير مُهيّأ")
+    contents = await file.read()
+    if len(contents) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="الملف كبير جداً (الحد 15MB)")
+    log_id = new_id()
+    up = await upload_bytes(
+        client_id=client_id,
+        log_id=log_id,
+        filename=file.filename or "attachment",
+        data=contents,
+        content_type=file.content_type or "application/octet-stream",
+    )
+    log = {
+        "id": log_id,
+        "text": text or (file.filename or ""),
+        "log_type": log_type or "file",
+        "created_at": now_iso(),
+        "attachment": {
+            "name": up["name"],
+            "mime": up["mime"],
+            "path": up["path"],
+        },
+    }
+    r = await db.clients.update_one({"id": client_id}, {"$push": {"logs": log}, "$set": {"updated_at": now_iso()}})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="العميل غير موجود")
+    return {
+        "id": log_id,
+        "text": log["text"],
+        "log_type": log["log_type"],
+        "created_at": log["created_at"],
+        "attachment": {"name": up["name"], "mime": up["mime"]},
+    }
+
+
 @router.delete("/clients/{client_id}/logs/{log_id}")
 async def delete_client_log(client_id: str, log_id: str):
+    # Try delete attached file from Supabase (best-effort)
+    doc = await db.clients.find_one({"id": client_id, "logs.id": log_id}, {"_id": 0, "logs.$": 1})
+    if doc and doc.get("logs"):
+        att = (doc["logs"][0] or {}).get("attachment") or {}
+        if att.get("path"):
+            try:
+                from supabase_storage import remove_paths
+                await remove_paths([att["path"]])
+            except Exception:
+                pass
     await db.clients.update_one({"id": client_id}, {"$pull": {"logs": {"id": log_id}}})
     return {"ok": True}
 
@@ -134,7 +216,18 @@ async def get_client_log_attachment(client_id: str, log_id: str):
         raise HTTPException(status_code=404, detail="العميل غير موجود")
     for lg in doc.get("logs", []):
         if lg.get("id") == log_id and lg.get("attachment"):
-            return lg["attachment"]
+            att = lg["attachment"]
+            # New: stored in Supabase — return fresh signed URL
+            if att.get("path"):
+                try:
+                    from supabase_storage import get_signed_url
+                    url = await get_signed_url(att["path"])
+                    return {"name": att.get("name"), "mime": att.get("mime"), "url": url, "kind": "url"}
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"تعذر توليد رابط: {e}")
+            # Legacy: base64 in Mongo
+            if att.get("data"):
+                return {"name": att.get("name"), "mime": att.get("mime"), "data": att["data"], "kind": "data"}
     raise HTTPException(status_code=404, detail="المرفق غير موجود")
 
 

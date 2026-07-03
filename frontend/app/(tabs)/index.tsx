@@ -169,6 +169,7 @@ export default function Dashboard() {
     { title: 'خدماتي', sub: 'درون ومونتاج', icon: 'briefcase' as const, href: '/services' },
     { title: 'تسعيرتي', sub: 'أسعارك مقابل السوق', icon: 'pricetags' as const, href: '/pricing' },
     { title: 'رؤى الأسبوع', sub: 'تقرير سند الأسبوعي', icon: 'analytics' as const, href: '/insights' },
+    { title: 'حسابات Google', sub: 'ربط تقويم Google', icon: 'logo-google' as const, href: '/google-accounts' },
     { title: 'روابط سريعة', sub: 'روابطك اليومية', icon: 'link' as const, href: '/links' },
   ];
 

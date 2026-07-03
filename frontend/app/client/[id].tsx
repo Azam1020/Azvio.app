@@ -16,7 +16,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
-import { api } from '@/src/api';
+import { api, apiUpload } from '@/src/api';
 import { AppModal, Chips, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
 import { SERVICE_LABELS, SERVICE_OPTIONS, openWhatsApp } from '@/src/clientHelpers';
@@ -84,39 +84,24 @@ export default function ClientDetail() {
       });
       if (res.canceled || !res.assets?.[0]) return;
       const asset = res.assets[0];
-      if (asset.size && asset.size > 10 * 1024 * 1024) {
-        Alert.alert('الملف كبير جداً', 'الحد الأقصى 10MB لكل ملف.');
+      if (asset.size && asset.size > 15 * 1024 * 1024) {
+        Alert.alert('الملف كبير جداً', 'الحد الأقصى 15MB لكل ملف.');
         return;
       }
       setUploading(true);
-      // read file as base64
-      let base64 = '';
-      if (Platform.OS === 'web') {
-        // On web, uri is a blob URL. Fetch it and convert to base64.
-        const blob = await (await fetch(asset.uri)).blob();
-        base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const s = String(reader.result || '');
-            resolve(s.split(',')[1] || '');
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
+      const fd = new FormData();
+      if (Platform.OS === 'web' && (asset as any).file) {
+        fd.append('file', (asset as any).file, asset.name);
       } else {
-        const FileSystem = await import('expo-file-system/legacy');
-        base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+        fd.append('file', {
+          uri: asset.uri,
+          name: asset.name || 'attachment',
+          type: asset.mimeType || 'application/octet-stream',
+        } as any);
       }
-      await api(`/clients/${id}/logs`, {
-        method: 'POST',
-        body: JSON.stringify({
-          text: logText.trim() || asset.name,
-          log_type: 'file',
-          attachment_name: asset.name,
-          attachment_mime: asset.mimeType || 'application/octet-stream',
-          attachment_data: base64,
-        }),
-      });
+      fd.append('text', logText.trim() || asset.name || '');
+      fd.append('log_type', 'file');
+      await apiUpload(`/clients/${id}/logs/upload`, fd);
       setLogText('');
       load();
     } catch (e: any) {
@@ -129,20 +114,32 @@ export default function ClientDetail() {
   const openAttachment = async (log: any) => {
     try {
       const att = await api(`/clients/${id}/logs/${log.id}/attachment`);
-      if (!att?.data) return;
-      const dataUri = `data:${att.mime};base64,${att.data}`;
-      if (Platform.OS === 'web') {
-        // Open in new tab
-        const w = (globalThis as any).window;
-        if (w?.open) w.open(dataUri, '_blank');
-      } else {
-        // Save to cache and open with browser
-        const FileSystem = await import('expo-file-system/legacy');
-        const path = `${FileSystem.cacheDirectory}${log.id}-${att.name}`;
-        await FileSystem.writeAsStringAsync(path, att.data, { encoding: FileSystem.EncodingType.Base64 });
-        await WebBrowser.openBrowserAsync(path);
+      // New: signed URL from Supabase
+      if (att?.kind === 'url' && att.url) {
+        if (Platform.OS === 'web') {
+          const w = (globalThis as any).window;
+          if (w?.open) w.open(att.url, '_blank');
+        } else {
+          await WebBrowser.openBrowserAsync(att.url);
+        }
+        return;
       }
-    } catch {}
+      // Legacy: base64 in Mongo
+      if (att?.data) {
+        const dataUri = `data:${att.mime};base64,${att.data}`;
+        if (Platform.OS === 'web') {
+          const w = (globalThis as any).window;
+          if (w?.open) w.open(dataUri, '_blank');
+        } else {
+          const FileSystem = await import('expo-file-system/legacy');
+          const path = `${FileSystem.cacheDirectory}${log.id}-${att.name}`;
+          await FileSystem.writeAsStringAsync(path, att.data, { encoding: FileSystem.EncodingType.Base64 });
+          await WebBrowser.openBrowserAsync(path);
+        }
+      }
+    } catch (e: any) {
+      Alert.alert('خطأ', e?.message || 'تعذر فتح المرفق');
+    }
   };
 
   const deleteLog = async (logId: string) => {
