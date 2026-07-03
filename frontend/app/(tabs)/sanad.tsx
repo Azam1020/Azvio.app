@@ -16,10 +16,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { api, apiUpload } from '@/src/api';
+import { storage } from '@/src/utils/storage';
 import { confirmAsync } from '@/src/ui';
 import { C, F, R, shadow } from '@/src/theme';
 
 type Msg = { id: string; role: 'user' | 'assistant'; content: string };
+
+const MODELS = [
+  { key: 'claude', label: 'Claude' },
+  { key: 'gemini-pro', label: 'Gemini Pro' },
+  { key: 'gemini-flash', label: 'Gemini Flash' },
+];
 
 const SUGGESTIONS = [
   'كم دخلي هذا الشهر؟',
@@ -34,10 +41,13 @@ export default function SanadScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [attachment, setAttachment] = useState<any>(null);
+  const [model, setModel] = useState('claude');
   const scrollRef = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
     try {
+      const saved = await storage.getItem<string>('sanad_model', 'claude');
+      if (saved) setModel(saved);
       const history = await api('/sanad/history');
       setMessages(history.map((m: any) => ({ id: m.id, role: m.role, content: m.content })));
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
@@ -81,7 +91,7 @@ export default function SanadScreen() {
       } else {
         data = await api('/sanad/chat', {
           method: 'POST',
-          body: JSON.stringify({ message, session_id: 'default' }),
+          body: JSON.stringify({ message, session_id: 'default', model }),
         });
       }
       setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: data.reply }]);
@@ -117,6 +127,12 @@ export default function SanadScreen() {
     }
   };
 
+  const selectModel = (key: string) => {
+    setModel(key);
+    storage.setItem('sanad_model', key);
+    if (Platform.OS !== 'web') Haptics.selectionAsync();
+  };
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: C.surface2 }}
@@ -136,6 +152,18 @@ export default function SanadScreen() {
           <TouchableOpacity onPress={clearChat} hitSlop={8} testID="clear-chat-btn">
             <Ionicons name="trash-outline" size={20} color={C.muted} />
           </TouchableOpacity>
+        </View>
+        <View style={styles.modelRow}>
+          {MODELS.map((m) => (
+            <TouchableOpacity
+              key={m.key}
+              style={[styles.modelChip, model === m.key && styles.modelChipActive]}
+              onPress={() => selectModel(m.key)}
+              testID={`model-${m.key}`}
+            >
+              <Text style={[styles.modelText, model === m.key && { color: '#FFF' }]}>{m.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
@@ -246,6 +274,17 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontFamily: F.bold, fontSize: 17, color: C.onSurface },
   headerSub: { fontFamily: F.regular, fontSize: 11, color: C.muted },
+  modelRow: { flexDirection: 'row-reverse', gap: 6, marginTop: 10 },
+  modelChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: R.pill,
+    backgroundColor: C.surface2,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  modelChipActive: { backgroundColor: C.brand, borderColor: C.brand },
+  modelText: { fontFamily: F.semibold, fontSize: 11, color: C.onSurface2 },
   welcome: { alignItems: 'center', paddingVertical: 30, paddingHorizontal: 20 },
   welcomeIcon: {
     width: 64,

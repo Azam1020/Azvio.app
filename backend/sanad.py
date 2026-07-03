@@ -232,10 +232,19 @@ async def store_message(session_id: str, role: str, content: str):
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
+    model: str = "claude"
+
+
+CHAT_MODELS = {
+    "claude": ("anthropic", "claude-sonnet-4-5-20250929"),
+    "gemini-pro": ("gemini", "gemini-3.1-pro-preview"),
+    "gemini-flash": ("gemini", "gemini-3.5-flash"),
+}
 
 
 @router.post("/sanad/chat")
 async def sanad_chat(body: ChatRequest):
+    provider, model_name = CHAT_MODELS.get(body.model, CHAT_MODELS["claude"])
     context = await build_context()
     hist = await get_history_text(body.session_id)
     system = build_system(context)
@@ -247,7 +256,7 @@ async def sanad_chat(body: ChatRequest):
             api_key=LLM_KEY,
             session_id=f"sanad-{uuid.uuid4().hex[:10]}",
             system_message=system,
-        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        ).with_model(provider, model_name)
         resp = await chat.send_message(UserMessage(text=body.message))
         text = resp if isinstance(resp, str) else (getattr(resp, "text", None) or str(resp))
     except Exception as e:
