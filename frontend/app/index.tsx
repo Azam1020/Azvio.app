@@ -1,30 +1,38 @@
-import { Text, View, StyleSheet, Image } from "react-native";
-
-const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { Redirect } from "expo-router";
+import { useAuth } from "@/src/AuthContext";
+import { C, F } from "@/src/theme";
 
 export default function Index() {
-  console.log(EXPO_PUBLIC_BACKEND_URL, "EXPO_PUBLIC_BACKEND_URL");
+  const { user, loading } = useAuth();
 
-  return (
-    <View style={styles.container}>
-      <Image
-        source={require("../assets/images/app-image.png")}
-        style={styles.image}
-      />
-    </View>
-  );
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.logo}>
+          AZV<Text style={{ color: C.brand }}>IO</Text>
+        </Text>
+        <ActivityIndicator color={C.brand} size="large" />
+      </View>
+    );
+  }
+
+  if (!user) return <Redirect href="/login" />;
+  return <Redirect href="/(tabs)" />;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0c0c0c",
+    backgroundColor: C.surface,
     alignItems: "center",
     justifyContent: "center",
+    gap: 20,
   },
-  image: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "contain",
+  logo: {
+    fontFamily: F.bold,
+    fontSize: 42,
+    letterSpacing: 4,
+    color: C.onSurface,
   },
 });

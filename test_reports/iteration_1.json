@@ -1,0 +1,39 @@
+{
+  "summary": "First full test run of AZVIO (Arabic RTL Expo + FastAPI + MongoDB). Backend: 39/39 pytest tests PASSED covering auth (email login primary + case-insensitive azzam, wrong password, non-whitelisted email, /auth/me, protected route, Google session invalid), Clients CRUD + search + logs, Transactions CRUD (all 5 types incl debt with paid toggle), finance summary math, Content CRUD + stage update, Events CRUD, Services & Links (seeded + CRUD), Dashboard aggregates, Sanad AI chat in Arabic that actually executed add_transaction action (150 SAR coffee expense persisted), Sanad history GET/DELETE, and Invoice PDF analysis (extracted vendor/amount=275/date/suggested_type via Gemini). Frontend (mobile web preview 390x800): login → dashboard → 4 nav cards (nav-content/calendar/services/links) → clients FAB add + card render → client detail status change to delivered + add log → finance segments switching → Sanad chat sent Arabic message + received Arabic reply → seeded services (تصوير جوي بالدرون + مونتاج فيديو احترافي) and 4 quick links (incl Google Drive) rendered → logout returns to login. All flows work end-to-end. No red screens, no runtime errors. Minor RN-web deprecation warnings (shadow* + pointerEvents) — cosmetic only.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Console warnings on web preview: 'shadow*' style props deprecated (use boxShadow) and 'props.pointerEvents' deprecated. These come from RN-web's react-native-css-interop layer and do not affect native builds, but appear on every mount — consider swapping shadow props for boxShadow on web or wrapping in Platform.select."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(optional/cosmetic) Silence RN-web deprecation warnings by replacing shadow* style props with boxShadow, and removing legacy pointerEvents prop from any View.",
+    "No functional fixes required — MVP is production-ready per the requested feature set."
+  ],
+  "critical_code_review_comments": [
+    "auth.py seed_admins() re-hashes password on every startup for existing users without hash — currently idempotent, but bcrypt.gensalt() runs on every boot even when not needed (minor perf). Acceptable.",
+    "sanad.py stores full 'clean' assistant text (including appended action confirmations) — good UX. Note LLM prompt is ~4KB with context — fine.",
+    "crud_routes.py finance/summary correctly excludes paid debts and includes month_expenses = expense + subscription. Math validated in tests.",
+    "server.py CORS is allow_origins=['*'] with allow_credentials=True — browsers ignore credentials with wildcard but no functional impact for JWT-in-header. Fine for single-admin app.",
+    "All endpoints strip mongo _id via projection {\"_id\": 0} — no ObjectId serialization issues.",
+    "get_current_user handles both JWT and Google session tokens uniformly — good.",
+    "All React Native screens have proper testID attributes (login, tabs, FABs, modals). Only AppModal save button lacked testID — added 'modal-save-btn' during testing."
+  ],
+  "updated_files": [
+    "/app/frontend/src/ui.tsx (added testID='modal-save-btn' to AppModal save button)",
+    "/app/backend/tests/backend_test.py (created — 39 pytest tests)"
+  ],
+  "success_rate": {"backend": "100% (39/39)", "frontend": "100% (all critical flows)"},
+  "seed_data_creation": "Created and cleaned up: TEST_ prefixed clients, transactions of all 5 types, content, events, services, links. Also removed the Sanad-created 150 SAR coffee expense and TEST_UI client used during Playwright frontend testing. DB is back to seeded defaults + any pre-existing data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend base URL from EXPO_PUBLIC_BACKEND_URL (or EXPO_BACKEND_URL fallback). Login: Info@azvio.co / Azvio@2026 (case-insensitive; azzam@azvio.co also whitelisted). Sanad AI calls take 6-15s per turn — use timeout>=90s. Invoice /api/invoices/analyze may take up to 40s (Gemini) — timeout>=120s. Frontend testIDs to reuse: email-input, password-input, login-btn, google-login-btn, logout-btn, nav-content/calendar/services/links, add-client-fab, client-search, client-card-<id>, wa-btn-<id>, status-in_progress/delivered, edit-client-btn, delete-client-btn, log-input, add-log-btn, add-tx-btn, segment-<key>, upload-invoice-btn, sanad-input, send-btn, attach-btn, clear-chat-btn, modal-save-btn. Backend tests file '/app/backend/tests/backend_test.py' is reusable — run `pytest /app/backend/tests/ -v`.",
+  "rca_of_issue": "N/A — no bugs found in this iteration."
+}
