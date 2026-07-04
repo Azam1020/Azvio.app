@@ -81,7 +81,7 @@ export default function SanadScreen() {
       } else {
         data = await api('/sanad/chat', {
           method: 'POST',
-          body: JSON.stringify({ message, session_id: 'default', model }),
+          body: JSON.stringify({ message, session_id: 'default',}),
         });
       }
       setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: data.reply }]);

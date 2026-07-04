@@ -295,7 +295,7 @@ async def sanad_chat(body: ChatRequest):
         raise HTTPException(status_code=500, detail=f"تعذر الاتصال بسند: {e}")
     clean, actions = await execute_actions(text)
     await store_message(body.session_id, "assistant", clean)
-    return {"reply": clean, "actions": actions}
+    return {"reply": clean, "actions": actions, "model": body.model}
 
 
 async def _save_upload(file: UploadFile):
