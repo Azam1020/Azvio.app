@@ -11,8 +11,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from database import db
-
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from llm_client import ask_text, LLMError
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -164,16 +163,13 @@ async def analyze_chat(file: UploadFile = File(...), label: Optional[str] = Form
         raise HTTPException(status_code=400, detail="الملف فارغ")
 
     try:
-        chat = LlmChat(
-            api_key=LLM_KEY,
-            session_id=f"wa-{uuid.uuid4().hex[:10]}",
-            system_message=(
-                "أنت خبير تحليل محادثات واتساب باللغة العربية وتستخرج البيانات بدقة كصيغة JSON فقط."
-            ),
-        ).with_model("gemini", "gemini-3.1-pro-preview")
-        resp = await chat.send_message(UserMessage(text=WHATSAPP_PROMPT + "\n\n---بداية المحادثة---\n" + chat_text))
-        text = resp if isinstance(resp, str) else (getattr(resp, "text", None) or str(resp))
-    except Exception as e:
+        text = await ask_text(
+            system="أنت خبير تحليل محادثات واتساب باللغة العربية وتستخرج البيانات بدقة كصيغة JSON فقط.",
+            user=WHATSAPP_PROMPT + "\n\n---بداية المحادثة---\n" + chat_text,
+            task="analyze",
+            temperature=0.3,
+        )
+    except LLMError as e:
         raise HTTPException(status_code=500, detail=f"تعذر تحليل المحادثة: {e}")
 
     raw = _parse_json(text)

@@ -13,8 +13,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from database import db
-
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from llm_client import ask_text, LLMError
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -61,15 +60,14 @@ async def _sanad_enhance(client: dict) -> dict:
     }
     user_msg = "بيانات المشروع:\n" + json.dumps(ctx, ensure_ascii=False)
     try:
-        chat = LlmChat(
-            api_key=LLM_KEY,
-            session_id=f"portfolio-{uuid.uuid4().hex[:10]}",
-            system_message="أنت مساعد ذكي تجيب دائماً بصيغة JSON فقط.",
-        ).with_model("gemini", "gemini-3.5-flash")
-        resp = await chat.send_message(UserMessage(text=SANAD_ENHANCE_PROMPT + "\n\n" + user_msg))
-        text = resp if isinstance(resp, str) else (getattr(resp, "text", None) or str(resp))
+        text = await ask_text(
+            system="أنت مساعد ذكي تجيب دائماً بصيغة JSON فقط.",
+            user=SANAD_ENHANCE_PROMPT + "\n\n" + user_msg,
+            task="suggest",
+            temperature=0.6,
+        )
         data = _parse_json(text)
-    except Exception:
+    except LLMError:
         data = {}
     return {
         "title": (data.get("title") or (client.get("sub_category") or "مشروع") + " — " + (client.get("service_type") or "درون")).strip()[:120],

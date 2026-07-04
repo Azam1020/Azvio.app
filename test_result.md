@@ -274,17 +274,17 @@ frontend:
 
 metadata:
   created_by: "main_agent"
-  version: "2.1"
-  test_sequence: 2
+  version: "2.2"
+  test_sequence: 3
   run_ui: false
 
 test_plan:
   current_focus:
-    - "User dashboard settings endpoints (GET/PUT/POST /api/user/settings*)"
-    - "Dashboard widget reordering with cross-device sync (frontend)"
-    - "Calendar default view = week, month/week/list toggle"
-    - "Dynamic ServiceTypeChips in clients/services/pricing/client-detail"
-    - "Finance invoice modal date field now uses DateField picker"
+    - "Direct LLM integration (Claude Sonnet 4.5 + Gemini 2.5 Flash/Pro) via user keys"
+    - "WhatsApp chat analysis endpoints (/api/whatsapp/*)"
+    - "Portfolio auto-sync endpoints (/api/portfolio/*)"
+    - "Auto-portfolio creation on client status='delivered'"
+    - "User dashboard settings (order/visibility)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -292,25 +292,44 @@ test_plan:
 agent_communication:
     - agent: "main"
       message: |
-        Iteration 5 (current session — user request "Dates+Views+Dropdowns+Reordering"):
-        1. **User Preferences Backend**: new `/app/backend/user_settings.py` with:
-           - `GET /api/user/settings` (returns dashboard order + visible, merged with defaults)
-           - `PUT /api/user/settings/dashboard` (validates known widget keys, persists to `user_prefs` collection)
-           - `POST /api/user/settings/dashboard/reset`
-        2. **Dashboard reordering (Home)** — `/app/frontend/app/(tabs)/index.tsx`: 
-           - Replaced flat DEFAULT_WIDGETS toggles with `widgetsOrder` (WidgetKey[]) + `widgetsVisible` (record). 
-           - Customize modal now shows up/down arrow buttons per widget, with disabled state at boundaries, plus visibility switch. 
-           - Prefs synced to backend + cached in AsyncStorage under `azvio_dashboard_prefs_v2`.
-        3. **Calendar** — `/app/frontend/app/calendar.tsx`: default `mode` changed from `month` to `week` (per user request, 12-hour format already in place via `formatTime12h`).
-        4. **ServiceTypeChips component** (new file `/app/frontend/src/ServiceTypeChips.tsx`):
-           - Fetches `/api/service-types` and renders horizontally-scrolling chips.
-           - "+ نوع جديد" chip opens a modal to create a new service type (auto-generates key for Arabic labels).
-           - `useServiceTypeLabel()` hook returns dynamic label map (drone/editing/custom).
-           - Applied in: `clients.tsx` (add modal), `client/[id].tsx` (edit modal), `services.tsx`, `pricing.tsx`. 
-           - Client card list and detail subtitle updated to use dynamic labels.
-        5. **Finance invoice modal** — `/app/frontend/app/(tabs)/finance.tsx`: last remaining plain text date field replaced with `<DateField>` picker.
-        6. Cleaned unused imports (`Chips`, `SERVICE_OPTIONS`, `SelectField`) across affected files.
+        Iteration 6 (current session — LLM keys migration + WhatsApp + Portfolio):
         
-        Backend restarted successfully. Frontend restarted, Metro bundling OK. Visual verification via screenshots: Login → Dashboard customize modal shows 5 widgets with up/down arrows ✓; Add Client shows ServiceTypeChips with "+ نوع جديد" ✓; Add Service same ✓; Calendar opens in Week view by default ✓.
+        **CRITICAL FIX**: Emergent LLM proxy budget exhausted → migrated all Sanad calls to user's own keys.
+        1. New `/app/backend/llm_client.py` — unified LiteLLM wrapper with:
+           - `ask_text(system, user, task)` → routes: chat/insight/advice → Claude Sonnet 4.5, suggest → Gemini 2.5 Flash
+           - `ask_with_file(system, prompt, path, mime, task)` → routes: vision → Gemini 2.5 Pro (Claude Sonnet fallback)
+           - Automatic single-shot fallback between providers on failure
+           - Reads ANTHROPIC_API_KEY + GEMINI_API_KEY from .env
+        2. Refactored `sanad.py`: removed all `LlmChat/UserMessage/FileContentWithMimeType` calls, now uses `ask_text` and `ask_with_file`
+        3. Refactored `whatsapp_analysis.py` and `portfolio.py`: same migration
+        4. Frontend: removed model selection buttons in `sanad.tsx` (Claude/Gemini Pro/Gemini Flash chips) since routing is now automatic. Added "مدعوم بـ Claude Sonnet 4.5 + Gemini 2.5" badge.
         
-        Please run **backend tests** for the new `/user/settings*` endpoints (auth-gated, valid/invalid inputs, upsert behavior, reset). Frontend visually verified but no e2e run yet.
+        **NEW FEATURES ADDED**:
+        1. `/app/backend/whatsapp_analysis.py`:
+           - `POST /api/whatsapp/analyze` (multipart .txt/.zip) — extracts client, prices, events, notes, alerts, summary
+           - `GET /api/whatsapp-analyses`, `GET /api/whatsapp-analyses/{id}`, `DELETE ...`
+           - `POST /api/whatsapp-analyses/{id}/apply` — creates/updates client, events, transactions, logs
+        2. `/app/backend/portfolio.py`:
+           - `GET /api/portfolio` (with signed cover URLs), `GET /api/portfolio/{id}` (with per-media signed URLs), `PUT`, `DELETE`
+           - `POST /api/portfolio/{id}/regenerate` — Sanad regenerates title/desc/tags
+           - `POST /api/portfolio/sync-all`
+           - Auto-hook in `PUT /api/clients/{id}` — when status transitions to `delivered`, portfolio item auto-created (fires-and-forgets)
+        3. Frontend screens:
+           - `/app/frontend/app/whatsapp.tsx` — upload + list + detail modal + apply-to-CRM options (client/events/transactions/logs toggles)
+           - `/app/frontend/app/portfolio.tsx` — 2-col grid + edit modal (title/desc/tags/public toggle) + regenerate/delete + sync-all button
+           - Home nav grid updated: added "البورتفوليو" and "تحليل واتساب" cards
+        
+        **VERIFICATION (already done via curl + screenshots)**:
+        - Sanad chat: Claude Sonnet 4.5 returned proper Arabic response with pricing recommendations ✓
+        - Sanad price-opinion: Gemini 2.5 Flash returned JSON with verdict="fair", market_min/max ✓
+        - User settings endpoints: GET/PUT/reset all working ✓
+        - WhatsApp/portfolio endpoints deployed and accessible ✓
+        - Frontend UI verified: Sanad chat, dashboard reordering (up/down arrows), calendar week-default, ServiceTypeChips in clients/services/pricing ✓
+        
+        **Please test (backend focus)**:
+        1. WhatsApp analysis flow: upload a sample .txt chat → analyze → verify JSON extraction shape → apply (create client + events + transactions)
+        2. Portfolio auto-sync: create a client → set status=delivered → verify portfolio_item auto-created; edit title/desc → verify auto_generated=false protects it from re-sync
+        3. LLM fallback: does the system gracefully handle if one provider fails? (Optional — hard to simulate)
+        4. Direct sanad chat/insight/advice all reachable + returning content in Arabic.
+        
+        Frontend visually verified. If backend tests pass, main flow is complete.
