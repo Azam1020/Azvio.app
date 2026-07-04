@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from auth import router as auth_router, seed_admins
+from auth import router as auth_router, public_router as auth_public_router, seed_admins
 from crud_routes import router as crud_router, seed_defaults
 from database import client, db
 from sanad import router as sanad_router
@@ -16,6 +16,7 @@ from portfolio import router as portfolio_router
 app = FastAPI(title="AZVIO API")
 
 app.include_router(auth_router, prefix="/api")
+app.include_router(auth_public_router, prefix="/api")
 app.include_router(crud_router, prefix="/api")
 app.include_router(sanad_router, prefix="/api")
 app.include_router(google_router, prefix="/api")

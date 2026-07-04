@@ -32,13 +32,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const processSessionId = async (sessionId: string) => {
-    const data = await api('/auth/session', {
-      method: 'POST',
-      body: JSON.stringify({ session_id: sessionId }),
-    });
-    await setToken(data.token);
-    setUser(data.user);
+  const processLoginToken = async (loginToken: string) => {
+    // The backend already verified this with Google directly and minted
+    // this token itself — no external proxy is trusted here.
+    await setToken(loginToken);
+    const me = await api('/auth/me');
+    setUser(me);
   };
 
   useEffect(() => {
@@ -46,18 +45,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           const source = `${window.location.hash} ${window.location.search}`;
-          const m = source.match(/session_id=([^&#\s]+)/);
+          const m = source.match(/token=([^&#\s]+)/);
           if (m) {
-            await processSessionId(m[1]);
+            await processLoginToken(m[1]);
             window.history.replaceState(null, '', window.location.pathname);
             setLoading(false);
             return;
           }
         } else if (Platform.OS !== 'web') {
           const initial = await Linking.getInitialURL();
-          const m = initial?.match(/session_id=([^&#\s]+)/);
+          const m = initial?.match(/token=([^&#\s]+)/);
           if (m) {
-            await processSessionId(m[1]);
+            await processLoginToken(m[1]);
             setLoading(false);
             return;
           }
@@ -84,17 +83,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginGoogle = async () => {
+    // Ask our own backend for Google's real consent-screen URL — the
+    // backend then redirects straight back into the app with our own
+    // token. No third-party auth proxy is involved anywhere in this flow.
+    const { auth_url } = await api('/auth/google/login-url');
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const redirectUrl = window.location.origin + '/';
-      window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+      window.location.href = auth_url;
       return;
     }
     const redirectUrl = Linking.createURL('auth');
-    const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
+    const result = await WebBrowser.openAuthSessionAsync(auth_url, redirectUrl);
     if (result.type === 'success' && result.url) {
-      const m = result.url.match(/session_id=([^&#\s]+)/);
-      if (m) await processSessionId(m[1]);
+      const m = result.url.match(/token=([^&#\s]+)/);
+      if (m) await processLoginToken(m[1]);
     }
   };
 

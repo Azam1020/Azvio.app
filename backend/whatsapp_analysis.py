@@ -15,7 +15,6 @@ from llm_client import ask_text, LLMError
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
-LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 
 
 def now_iso():

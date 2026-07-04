@@ -11,15 +11,8 @@ from auth import get_current_user
 from database import db
 from llm_client import ask_text, ask_with_file, LLMError
 
-# Kept import for backwards compat (some code paths may still use it) but not used for LLM calls anymore.
-try:
-    from emergentintegrations.llm.chat import FileContentWithMimeType, LlmChat, UserMessage  # noqa: F401
-except Exception:
-    pass
-
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
-LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 UPLOAD_DIR = "/tmp/azvio_uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 

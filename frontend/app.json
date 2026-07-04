@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.azvioworkspace.rc88l2"
+      "bundleIdentifier": "co.azvio.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.azvioworkspace.rc88l2"
+      "package": "co.azvio.app"
     },
     "web": {
       "bundler": "metro",
