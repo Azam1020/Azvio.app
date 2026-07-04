@@ -17,7 +17,11 @@ let NativePicker: any = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   NativePicker = require('@react-native-community/datetimepicker').default;
-} catch {}
+} catch (e) {
+  // Keep NativePicker null but surface the reason in dev/native logs so an
+  // empty modal is never a silent failure.
+  console.warn('[DateTimePicker] Failed to load native datetimepicker module:', e);
+}
 
 const AR_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 const AR_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -141,23 +145,31 @@ export function DateField({
       )}
 
       {/* Native modal picker */}
-      {Platform.OS !== 'web' && modal && NativePicker && (
+      {Platform.OS !== 'web' && modal && (
         <Modal transparent animationType="fade" onRequestClose={() => setModal(false)}>
           <Pressable style={styles.backdrop} onPress={() => setModal(false)}>
             <View style={styles.sheet}>
-              <NativePicker
-                value={tempDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(_: any, d?: Date) => {
-                  if (Platform.OS === 'android') {
-                    setModal(false);
-                    if (d) onChange(toDateStr(d));
-                  } else if (d) {
-                    setTempDate(d);
-                  }
-                }}
-              />
+              {NativePicker ? (
+                <NativePicker
+                  value={tempDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_: any, d?: Date) => {
+                    if (Platform.OS === 'android') {
+                      setModal(false);
+                      if (d) onChange(toDateStr(d));
+                    } else if (d) {
+                      setTempDate(d);
+                    }
+                  }}
+                />
+              ) : (
+                <View style={styles.pickerFallback}>
+                  <Text style={styles.pickerFallbackText}>
+                    تعذر تحميل أداة اختيار التاريخ. يرجى إعادة تشغيل التطبيق.
+                  </Text>
+                </View>
+              )}
               {Platform.OS === 'ios' && (
                 <View style={styles.sheetActions}>
                   <TouchableOpacity onPress={() => setModal(false)} style={styles.sheetCancel}>
@@ -258,24 +270,32 @@ export function TimeField({
         />
       )}
 
-      {Platform.OS !== 'web' && modal && NativePicker && (
+      {Platform.OS !== 'web' && modal && (
         <Modal transparent animationType="fade" onRequestClose={() => setModal(false)}>
           <Pressable style={styles.backdrop} onPress={() => setModal(false)}>
             <View style={styles.sheet}>
-              <NativePicker
-                value={tempTime}
-                mode="time"
-                is24Hour={false}
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(_: any, d?: Date) => {
-                  if (Platform.OS === 'android') {
-                    setModal(false);
-                    if (d) onChange(toTimeStr(d));
-                  } else if (d) {
-                    setTempTime(d);
-                  }
-                }}
-              />
+              {NativePicker ? (
+                <NativePicker
+                  value={tempTime}
+                  mode="time"
+                  is24Hour={false}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_: any, d?: Date) => {
+                    if (Platform.OS === 'android') {
+                      setModal(false);
+                      if (d) onChange(toTimeStr(d));
+                    } else if (d) {
+                      setTempTime(d);
+                    }
+                  }}
+                />
+              ) : (
+                <View style={styles.pickerFallback}>
+                  <Text style={styles.pickerFallbackText}>
+                    تعذر تحميل أداة اختيار التاريخ. يرجى إعادة تشغيل التطبيق.
+                  </Text>
+                </View>
+              )}
               {Platform.OS === 'ios' && (
                 <View style={styles.sheetActions}>
                   <TouchableOpacity onPress={() => setModal(false)} style={styles.sheetCancel}>
@@ -387,6 +407,8 @@ export function SelectField({
 }
 
 const styles = StyleSheet.create({
+  pickerFallback: { paddingVertical: 32, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' },
+  pickerFallbackText: { fontFamily: F.regular, fontSize: 14, color: C.muted, textAlign: 'center', lineHeight: 22 },
   wrap: { marginBottom: 14 },
   label: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, marginBottom: 6, textAlign: 'right' },
   trigger: {
