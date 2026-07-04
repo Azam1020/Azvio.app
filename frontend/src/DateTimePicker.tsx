@@ -154,6 +154,7 @@ export function DateField({
                   value={tempDate}
                   mode="date"
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  style={Platform.OS === 'ios' ? styles.nativePickerIOS : undefined}
                   onChange={(_: any, d?: Date) => {
                     if (Platform.OS === 'android') {
                       setModal(false);
@@ -280,6 +281,7 @@ export function TimeField({
                   mode="time"
                   is24Hour={false}
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  style={Platform.OS === 'ios' ? styles.nativePickerIOS : undefined}
                   onChange={(_: any, d?: Date) => {
                     if (Platform.OS === 'android') {
                       setModal(false);
@@ -407,6 +409,7 @@ export function SelectField({
 }
 
 const styles = StyleSheet.create({
+  nativePickerIOS: { height: 200, width: '100%' },
   pickerFallback: { paddingVertical: 32, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' },
   pickerFallbackText: { fontFamily: F.regular, fontSize: 14, color: C.muted, textAlign: 'center', lineHeight: 22 },
   wrap: { marginBottom: 14 },
