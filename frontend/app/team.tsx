@@ -14,11 +14,14 @@ type TeamUser = {
   active?: boolean;
 };
 
+const EMPTY_FORM = { name: '', email: '', password: '', role: 'member' as 'member' | 'admin' };
+
 export default function TeamScreen() {
   const [users, setUsers] = useState<TeamUser[]>([]);
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'member' as 'member' | 'admin' });
+  const [editing, setEditing] = useState<TeamUser | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
 
   const load = useCallback(async () => {
     try {
@@ -40,24 +43,65 @@ export default function TeamScreen() {
   );
 
   const openAdd = () => {
-    setForm({ name: '', email: '', password: '', role: 'member' });
+    setEditing(null);
+    setForm(EMPTY_FORM);
+    setModal(true);
+  };
+
+  const openEdit = (u: TeamUser) => {
+    setEditing(u);
+    setForm({ name: u.name, email: u.email, password: '', role: u.role });
     setModal(true);
   };
 
   const save = async () => {
-    if (!form.name.trim() || !form.email.trim() || form.password.length < 8) {
-      Alert.alert('بيانات ناقصة', 'الاسم والبريد مطلوبان، وكلمة المرور 8 أحرف على الأقل');
+    if (!form.name.trim() || !form.email.trim()) {
+      Alert.alert('بيانات ناقصة', 'الاسم والبريد مطلوبان');
+      return;
+    }
+    if (!editing && form.password.length < 8) {
+      Alert.alert('كلمة مرور قصيرة', 'كلمة المرور 8 أحرف على الأقل');
+      return;
+    }
+    if (editing && form.password && form.password.length < 8) {
+      Alert.alert('كلمة مرور قصيرة', 'كلمة المرور 8 أحرف على الأقل');
       return;
     }
     setSaving(true);
     try {
-      await api('/team', { method: 'POST', body: JSON.stringify(form) });
+      if (editing) {
+        const body: any = { name: form.name, email: form.email, role: form.role };
+        if (form.password) body.password = form.password;
+        await api(`/team/${editing.user_id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      } else {
+        await api('/team', { method: 'POST', body: JSON.stringify(form) });
+      }
       setModal(false);
       load();
     } catch (e: any) {
-      Alert.alert('تعذّرت الإضافة', e?.message || 'حدث خطأ');
+      Alert.alert('تعذّر الحفظ', e?.message || 'حدث خطأ');
     }
     setSaving(false);
+  };
+
+  const remove = () => {
+    if (!editing) return;
+    Alert.alert('حذف المستخدم', `هل تريد حذف ${editing.name} نهائياً؟ لا يمكن التراجع.`, [
+      { text: 'إلغاء', style: 'cancel' },
+      {
+        text: 'حذف',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api(`/team/${editing.user_id}`, { method: 'DELETE' });
+            setModal(false);
+            load();
+          } catch (e: any) {
+            Alert.alert('تعذّر الحذف', e?.message || 'حدث خطأ');
+          }
+        },
+      },
+    ]);
   };
 
   const toggleActive = async (u: TeamUser) => {
@@ -88,7 +132,7 @@ export default function TeamScreen() {
           <Empty icon="people-outline" text="لا يوجد مستخدمون إضافيون بعد" hint="اضغط + لإضافة أول عضو فريق" />
         ) : (
           users.map((u) => (
-            <View key={u.user_id} style={styles.row}>
+            <TouchableOpacity key={u.user_id} style={styles.row} onPress={() => openEdit(u)} activeOpacity={0.7}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{u.name}</Text>
                 <Text style={styles.email}>{u.email}</Text>
@@ -99,12 +143,19 @@ export default function TeamScreen() {
                 onValueChange={() => toggleActive(u)}
                 trackColor={{ true: C.brand, false: C.border }}
               />
-            </View>
+              <Ionicons name="chevron-back" size={18} color={C.muted} style={{ marginRight: 6 }} />
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
 
-      <AppModal visible={modal} title="إضافة مستخدم" onClose={() => setModal(false)} onSave={save} saving={saving}>
+      <AppModal
+        visible={modal}
+        title={editing ? 'تعديل مستخدم' : 'إضافة مستخدم'}
+        onClose={() => setModal(false)}
+        onSave={save}
+        saving={saving}
+      >
         <Field label="الاسم" value={form.name} onChangeText={(v) => setForm({ ...form, name: v })} placeholder="مثال: محمد أحمد" />
         <Field
           label="البريد الإلكتروني"
@@ -115,7 +166,7 @@ export default function TeamScreen() {
           keyboardType="email-address"
         />
         <Field
-          label="كلمة المرور المبدئية"
+          label={editing ? 'كلمة مرور جديدة (اختياري)' : 'كلمة المرور المبدئية'}
           value={form.password}
           onChangeText={(v) => setForm({ ...form, password: v })}
           placeholder="8 أحرف على الأقل"
@@ -130,6 +181,11 @@ export default function TeamScreen() {
           value={form.role}
           onChange={(v) => setForm({ ...form, role: v as 'member' | 'admin' })}
         />
+        {editing && (
+          <TouchableOpacity onPress={remove} style={{ marginTop: 16, alignItems: 'center' }}>
+            <Text style={styles.deleteText}>حذف هذا المستخدم نهائياً</Text>
+          </TouchableOpacity>
+        )}
       </AppModal>
     </View>
   );
@@ -151,4 +207,5 @@ const styles = StyleSheet.create({
   email: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'right', marginTop: 2 },
   role: { fontFamily: F.semibold, fontSize: 12, color: C.brand, textAlign: 'right', marginTop: 4 },
   chipsLabel: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, textAlign: 'right', marginBottom: 6 },
+  deleteText: { fontFamily: F.semibold, fontSize: 13, color: C.error },
 });

@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
-import { F, R } from './theme';
-
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
+import { F } from './theme';
 
 export default function PinLockScreen() {
   const { user, unlockWithPin, logout } = useAuth();
@@ -15,20 +14,19 @@ export default function PinLockScreen() {
   const insets = useSafeAreaInsets();
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
+  const inputRef = useRef<TextInput>(null);
 
-  const press = async (key: string) => {
-    if (key === '') return;
-    if (key === 'del') {
-      setPin((p) => p.slice(0, -1));
-      setError(false);
-      return;
-    }
-    if (pin.length >= 5) return;
-    const next = pin + key;
-    setPin(next);
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 300);
+    return () => clearTimeout(t);
+  }, []);
+
+  const onChange = async (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 5);
+    setPin(digits);
     setError(false);
-    if (next.length === 5) {
-      const ok = await unlockWithPin(next);
+    if (digits.length === 5) {
+      const ok = await unlockWithPin(digits);
       if (ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
@@ -40,40 +38,37 @@ export default function PinLockScreen() {
   };
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 24 }]}>
+    <View style={[styles.wrap, { paddingTop: insets.top + 80 }]}>
+      <TouchableOpacity style={[styles.escapeBtn, { top: insets.top + 16 }]} onPress={logout}>
+        <Ionicons name="log-out-outline" size={20} color={C.muted} />
+      </TouchableOpacity>
+
       <Text style={styles.hello}>مرحباً {user?.name || ''}</Text>
       <Text style={styles.sub}>أدخل الرمز لفتح AZVIO</Text>
 
-      <View style={styles.dotsRow}>
+      <TouchableOpacity
+        style={styles.dotsRow}
+        activeOpacity={1}
+        onPress={() => inputRef.current?.focus()}
+      >
         {[0, 1, 2, 3, 4].map((i) => (
           <View
             key={i}
-            style={[
-              styles.dot,
-              i < pin.length && styles.dotFilled,
-              error && styles.dotError,
-            ]}
+            style={[styles.dot, i < pin.length && styles.dotFilled, error && styles.dotError]}
           />
         ))}
-      </View>
-
-      <View style={styles.pad}>
-        {KEYS.map((k, i) => (
-          <TouchableOpacity
-            key={i}
-            style={styles.key}
-            disabled={k === ''}
-            onPress={() => press(k)}
-            activeOpacity={0.6}
-          >
-            <Text style={styles.keyText}>{k === 'del' ? '⌫' : k}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <TouchableOpacity onPress={logout} style={{ marginTop: 20 }}>
-        <Text style={styles.logoutText}>تسجيل خروج واستخدام حساب آخر</Text>
       </TouchableOpacity>
+
+      <TextInput
+        ref={inputRef}
+        value={pin}
+        onChangeText={onChange}
+        keyboardType="number-pad"
+        maxLength={5}
+        style={styles.hiddenInput}
+        autoFocus
+        caretHidden
+      />
     </View>
   );
 }
@@ -81,14 +76,12 @@ export default function PinLockScreen() {
 const makeStyles = (C: any) =>
   StyleSheet.create({
     wrap: { flex: 1, backgroundColor: C.surface, alignItems: 'center', paddingHorizontal: 24 },
+    escapeBtn: { position: 'absolute', left: 20 },
     hello: { fontFamily: F.bold, fontSize: 20, color: C.onSurface, marginBottom: 6 },
     sub: { fontFamily: F.regular, fontSize: 14, color: C.muted, marginBottom: 32 },
-    dotsRow: { flexDirection: 'row-reverse', gap: 16, marginBottom: 48 },
+    dotsRow: { flexDirection: 'row-reverse', gap: 16 },
     dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: C.border },
     dotFilled: { backgroundColor: C.brand, borderColor: C.brand },
     dotError: { backgroundColor: C.error, borderColor: C.error },
-    pad: { flexDirection: 'row', flexWrap: 'wrap', width: 260, justifyContent: 'center' },
-    key: { width: 80, height: 70, alignItems: 'center', justifyContent: 'center' },
-    keyText: { fontFamily: F.semibold, fontSize: 24, color: C.onSurface },
-    logoutText: { fontFamily: F.regular, fontSize: 13, color: C.muted, textDecorationLine: 'underline' },
+    hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   });

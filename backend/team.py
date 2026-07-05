@@ -34,6 +34,13 @@ class UserRoleUpdate(BaseModel):
     role: str
 
 
+class UserEdit(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    role: str | None = None
+    password: str | None = None
+
+
 @router.get("", dependencies=[Depends(get_current_admin)])
 async def list_users():
     users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
@@ -62,6 +69,46 @@ async def create_user(body: UserCreate):
     }
     await db.users.insert_one(dict(user))
     return public_user(user)
+
+
+@router.patch("/{user_id}", dependencies=[Depends(get_current_admin)])
+async def edit_user(user_id: str, body: UserEdit):
+    user = await db.users.find_one({"user_id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    updates: dict = {}
+    if body.name is not None and body.name.strip():
+        updates["name"] = body.name.strip()
+    if body.email is not None and body.email.strip():
+        el = body.email.strip().lower()
+        existing = await db.users.find_one({"email_lower": el, "user_id": {"$ne": user_id}})
+        if existing:
+            raise HTTPException(status_code=400, detail="هذا البريد الإلكتروني مستخدم من حساب آخر")
+        updates["email"] = body.email.strip()
+        updates["email_lower"] = el
+    if body.role is not None:
+        if body.role not in ("member", "admin"):
+            raise HTTPException(status_code=400, detail="الصلاحية يجب أن تكون member أو admin")
+        updates["role"] = body.role
+    if body.password is not None and body.password:
+        if len(body.password) < 8:
+            raise HTTPException(status_code=400, detail="كلمة المرور يجب أن تكون 8 أحرف على الأقل")
+        updates["password_hash"] = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
+    if updates:
+        await db.users.update_one({"user_id": user_id}, {"$set": updates})
+    updated = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    return updated
+
+
+@router.delete("/{user_id}", dependencies=[Depends(get_current_admin)])
+async def delete_user(user_id: str, current_admin: dict = Depends(get_current_admin)):
+    if user_id == current_admin["user_id"]:
+        raise HTTPException(status_code=400, detail="لا يمكنك حذف حسابك الخاص")
+    result = await db.users.delete_one({"user_id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    await db.user_sessions.delete_many({"user_id": user_id})
+    return {"ok": True}
 
 
 @router.patch("/{user_id}/role", dependencies=[Depends(get_current_admin)])

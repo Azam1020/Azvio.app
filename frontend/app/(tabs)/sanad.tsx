@@ -33,7 +33,7 @@ export default function SanadScreen() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [attachment, setAttachment] = useState<any>(null);
+  const [attachments, setAttachments] = useState<any[]>([]);
   const scrollRef = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
@@ -54,29 +54,34 @@ export default function SanadScreen() {
 
   const send = async (text?: string) => {
     const message = (text ?? input).trim();
-    if ((!message && !attachment) || sending) return;
+    if ((!message && attachments.length === 0) || sending) return;
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setInput('');
-    const userContent = attachment ? `📎 ${attachment.name}\n${message}` : message;
+    const userContent =
+      attachments.length > 0
+        ? `📎 ${attachments.map((a) => a.name).join('، ')}\n${message}`
+        : message;
     setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', content: userContent }]);
     setSending(true);
     scrollDown();
     try {
       let data;
-      if (attachment) {
+      if (attachments.length > 0) {
         const fd = new FormData();
-        if (Platform.OS === 'web' && attachment.file) {
-          fd.append('file', attachment.file, attachment.name);
-        } else {
-          fd.append('file', {
-            uri: attachment.uri,
-            name: attachment.name || 'file',
-            type: attachment.mimeType || 'application/octet-stream',
-          } as any);
-        }
+        attachments.forEach((att) => {
+          if (Platform.OS === 'web' && att.file) {
+            fd.append('files', att.file, att.name);
+          } else {
+            fd.append('files', {
+              uri: att.uri,
+              name: att.name || 'file',
+              type: att.mimeType || 'application/octet-stream',
+            } as any);
+          }
+        });
         fd.append('message', message);
         fd.append('session_id', 'default');
-        setAttachment(null);
+        setAttachments([]);
         data = await apiUpload('/sanad/chat-with-file', fd);
       } else {
         data = await api('/sanad/chat', {
@@ -105,9 +110,10 @@ export default function SanadScreen() {
         'application/vnd.ms-excel',
       ],
       copyToCacheDirectory: true,
+      multiple: true,
     });
     if (res.canceled || !res.assets?.length) return;
-    setAttachment(res.assets[0]);
+    setAttachments((prev) => [...prev, ...res.assets]);
   };
 
   const clearChat = async () => {
@@ -192,15 +198,22 @@ export default function SanadScreen() {
         </ScrollView>
       )}
 
-      {/* Attachment pill */}
-      {attachment && (
-        <View style={styles.attachPill}>
-          <TouchableOpacity onPress={() => setAttachment(null)} hitSlop={6}>
-            <Ionicons name="close-circle" size={18} color={C.muted} />
-          </TouchableOpacity>
-          <Text style={styles.attachName} numberOfLines={1}>
-            📎 {attachment.name}
-          </Text>
+      {/* Attachment chips */}
+      {attachments.length > 0 && (
+        <View style={styles.attachRow}>
+          {attachments.map((att, i) => (
+            <View key={`${att.name}-${i}`} style={styles.attachPill}>
+              <TouchableOpacity
+                onPress={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                hitSlop={6}
+              >
+                <Ionicons name="close-circle" size={18} color={C.muted} />
+              </TouchableOpacity>
+              <Text style={styles.attachName} numberOfLines={1}>
+                📎 {att.name}
+              </Text>
+            </View>
+          ))}
         </View>
       )}
 
@@ -219,9 +232,9 @@ export default function SanadScreen() {
           testID="sanad-input"
         />
         <TouchableOpacity
-          style={[styles.sendBtn, !(input.trim() || attachment) && { opacity: 0.4 }]}
+          style={[styles.sendBtn, !(input.trim() || attachments.length > 0) && { opacity: 0.4 }]}
           onPress={() => send()}
-          disabled={sending || !(input.trim() || attachment)}
+          disabled={sending || !(input.trim() || attachments.length > 0)}
           testID="send-btn"
         >
           <Ionicons name="send" size={18} color="#FFF" style={{ transform: [{ scaleX: -1 }] }} />
@@ -291,16 +304,22 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   suggestText: { fontFamily: F.semibold, fontSize: 12, color: C.brand },
+  attachRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+  },
   attachPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 8,
     backgroundColor: C.brandSoft,
-    marginHorizontal: 16,
-    marginTop: 8,
     borderRadius: R.md,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    maxWidth: 220,
   },
   attachName: { flex: 1, fontFamily: F.semibold, fontSize: 12, color: C.brand, textAlign: 'right' },
   inputBar: {

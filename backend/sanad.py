@@ -34,6 +34,10 @@ ACTION_PROTOCOL = """
 <action>{"type":"add_content","data":{"title":"عنوان الفكرة","description":"","stage":"idea"}}</action>
 <action>{"type":"add_event","data":{"title":"تصوير مشروع X","event_type":"shooting","date":"YYYY-MM-DD","time":"16:00","client_name":"","notes":""}}</action>
 <action>{"type":"update_client_status","data":{"name":"اسم العميل","status":"delivered"}}</action>
+<action>{"type":"delete_client","data":{"name":"اسم العميل"}}</action>
+<action>{"type":"clear_all_data","data":{"confirm":true}}</action>
+
+استخدم "delete_client" لحذف عميل واحد بالاسم. استخدم "clear_all_data" فقط لحذف كل البيانات التجريبية دفعة واحدة (كل العملاء، الحركات المالية، المواعيد، أفكار المحتوى) — وهذا الإجراء لا رجعة فيه، فلا تستخدمه إلا بعد ما يؤكد المستخدم صريحاً إنه يريد حذف كل شي (مثلاً يرد بـ"نعم" أو "أكد" على سؤالك التوضيحي). لا تكتب أبداً أنك حذفت أو نفذت أي شي إلا إذا استخدمت وسم <action> فعلياً — قول "تم" بدون تنفيذ إجراء حقيقي غير مقبول ويعتبر خطأ جسيم.
 <action>{"type":"add_category","data":{"name":"عقاري","service_type":"drone","description":"شرح مختصر يفهمه سند فقط"}}</action>
 <action>{"type":"add_service","data":{"title":"اسم الخدمة","description":"وصف مختصر","service_type":"drone","price_from":500,"price_to":2000}}</action>
 <action>{"type":"report_issue","data":{"kind":"bug","title":"عنوان قصير للمشكلة","description":"وصف تفصيلي بكلام المستخدم نفسه","screen":"اسم الشاشة إن ذكرها المستخدم"}}</action>
@@ -193,6 +197,23 @@ async def run_action(action: dict):
             label = "تم التسليم" if status == "delivered" else "قيد التنفيذ"
             return f"✅ تم تحديث حالة العميل {name} إلى: {label}"
         return f"⚠️ لم أجد عميلاً باسم {name}"
+    if t == "delete_client":
+        name = d.get("name") or ""
+        r = await db.clients.delete_one({"name": {"$regex": re.escape(name), "$options": "i"}})
+        if r.deleted_count:
+            return f"✅ حذفت العميل: {name}"
+        return f"⚠️ لم أجد عميلاً باسم {name}"
+    if t == "clear_all_data":
+        if not d.get("confirm"):
+            return "⚠️ لم يتم الحذف — يحتاج تأكيد صريح من المستخدم أولاً"
+        r1 = await db.clients.delete_many({})
+        r2 = await db.transactions.delete_many({})
+        r3 = await db.events.delete_many({})
+        r4 = await db.content.delete_many({})
+        return (
+            f"✅ تم حذف كل البيانات فعليًا: {r1.deleted_count} عميل، "
+            f"{r2.deleted_count} حركة مالية، {r3.deleted_count} موعد، {r4.deleted_count} فكرة محتوى."
+        )
     if t == "add_category":
         name = (d.get("name") or "").strip()
         if not name:
@@ -342,22 +363,33 @@ async def _save_upload(file: UploadFile):
 
 @router.post("/sanad/chat-with-file")
 async def sanad_chat_file(
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     message: str = Form(""),
     session_id: str = Form("default"),
 ):
-    path, mime = await _save_upload(file)
     user_text = message.strip() or "حلّل هذا الملف واستخرج البيانات المهمة منه"
-    await store_message(session_id, "user", f"📎 {file.filename}\n{user_text}")
+    names = "، ".join(f.filename for f in files)
+    await store_message(session_id, "user", f"📎 {names}\n{user_text}")
     context = await build_context()
     system = build_system(context)
-    try:
-        text = await ask_with_file(system=system, prompt=user_text, file_path=path, mime=mime, task="vision")
-    except LLMError as e:
-        raise HTTPException(status_code=500, detail=f"تعذر تحليل الملف: {e}")
-    clean, actions = await execute_actions(text)
-    await store_message(session_id, "assistant", clean)
-    return {"reply": clean, "actions": actions}
+
+    replies: list[str] = []
+    all_actions: list[str] = []
+    for f in files:
+        path, mime = await _save_upload(f)
+        try:
+            text = await ask_with_file(system=system, prompt=user_text, file_path=path, mime=mime, task="vision")
+        except LLMError as e:
+            replies.append(f"⚠️ تعذر تحليل {f.filename}: {e}")
+            continue
+        clean, actions = await execute_actions(text)
+        label = f"**📎 {f.filename}**\n{clean}" if len(files) > 1 else clean
+        replies.append(label)
+        all_actions.extend(actions)
+
+    combined = "\n\n---\n\n".join(replies)
+    await store_message(session_id, "assistant", combined)
+    return {"reply": combined, "actions": all_actions}
 
 
 @router.get("/sanad/history")
