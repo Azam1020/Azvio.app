@@ -16,6 +16,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BarChart, PieChart } from 'react-native-gifted-charts';
 import { api } from '@/src/api';
+import { apiCached } from '@/src/offlineCache';
+import { OfflineBanner } from '@/src/OfflineBanner';
 import { useAuth } from '@/src/AuthContext';
 import { AppModal, confirmAsync } from '@/src/ui';
 import { storage } from '@/src/utils/storage';
@@ -108,6 +110,7 @@ export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [data, setData] = useState<Dash | null>(null);
+  const [offline, setOffline] = useState(false);
   const [series, setSeries] = useState<Series | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -190,9 +193,13 @@ export default function Dashboard() {
 
   const load = useCallback(async () => {
     try {
-      const [dash, ts] = await Promise.all([api('/dashboard'), api('/dashboard/timeseries?months=6')]);
-      setData(dash);
-      setSeries(ts);
+      const [dash, ts] = await Promise.all([
+        apiCached('/dashboard', 'dashboard'),
+        apiCached('/dashboard/timeseries?months=6', 'dashboard_timeseries'),
+      ]);
+      setData(dash.data);
+      setSeries(ts.data);
+      setOffline(dash.fromCache || ts.fromCache);
     } catch {}
   }, []);
 
@@ -305,6 +312,8 @@ export default function Dashboard() {
           </TouchableOpacity>
         </View>
       </View>
+
+      <OfflineBanner visible={offline} />
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}

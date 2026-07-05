@@ -18,6 +18,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
 import { api, apiUpload } from '@/src/api';
+import { apiCached } from '@/src/offlineCache';
+import { OfflineBanner } from '@/src/OfflineBanner';
 import { AppModal, Chips, Empty, Field, confirmAsync } from '@/src/ui';
 import { DateField } from '@/src/DateTimePicker';
 import { C, F, R, fmt, shadow } from '@/src/theme';
@@ -74,6 +76,7 @@ export default function FinanceScreen() {
   const { width } = useWindowDimensions();
   const [segment, setSegment] = useState('overview');
   const [summary, setSummary] = useState<any>(null);
+  const [offline, setOffline] = useState(false);
   const [stats, setStats] = useState<any>(null);
   const [txs, setTxs] = useState<any[]>([]);
   const [modal, setModal] = useState(false);
@@ -92,13 +95,14 @@ export default function FinanceScreen() {
   const load = useCallback(async () => {
     try {
       const [s, t, st] = await Promise.all([
-        api('/finance/summary'),
-        api('/transactions'),
-        api('/finance/statistics?months=6'),
+        apiCached('/finance/summary', 'finance_summary'),
+        apiCached('/transactions', 'transactions'),
+        apiCached('/finance/statistics?months=6', 'finance_stats'),
       ]);
-      setSummary(s);
-      setTxs(t);
-      setStats(st);
+      setSummary(s.data);
+      setTxs(t.data);
+      setStats(st.data);
+      setOffline(s.fromCache || t.fromCache || st.fromCache);
     } catch {}
   }, []);
 
@@ -351,6 +355,8 @@ export default function FinanceScreen() {
           ))}
         </View>
       </View>
+
+      <OfflineBanner visible={offline} />
 
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 120 }}

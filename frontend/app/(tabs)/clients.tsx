@@ -13,6 +13,8 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { api } from '@/src/api';
+import { apiCached } from '@/src/offlineCache';
+import { OfflineBanner } from '@/src/OfflineBanner';
 import { AppModal, Empty, Field } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
 import { SERVICE_LABELS, openWhatsApp } from '@/src/clientHelpers';
@@ -25,6 +27,7 @@ export default function ClientsScreen() {
   const insets = useSafeAreaInsets();
   const serviceLabels = useServiceTypeLabel();
   const [clients, setClients] = useState<any[]>([]);
+  const [offline, setOffline] = useState(false);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,7 +44,9 @@ export default function ClientsScreen() {
 
   const load = useCallback(async () => {
     try {
-      setClients(await api('/clients'));
+      const { data, fromCache } = await apiCached('/clients', 'clients');
+      setClients(data);
+      setOffline(fromCache);
     } catch {}
   }, []);
 
@@ -95,6 +100,8 @@ export default function ClientsScreen() {
           />
         </View>
       </View>
+
+      <OfflineBanner visible={offline} />
 
       <FlatList
         data={filtered}
