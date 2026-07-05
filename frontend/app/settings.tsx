@@ -7,12 +7,19 @@ import { useTheme, ThemeMode } from '@/src/ThemeContext';
 import { AppModal, Field, ScreenHeader } from '@/src/ui';
 import { F, R, shadow } from '@/src/theme';
 import { clearPin, hasPin, setPin as savePin } from '@/src/pin';
+import {
+  isBiometricAvailable,
+  isBiometricEnabled,
+  setBiometricEnabled as saveBiometricEnabled,
+} from '@/src/biometric';
 
 export default function SettingsScreen() {
   const { user } = useAuth();
   const { C, mode, setMode } = useTheme();
   const styles = makeStyles(C);
   const [pinEnabled, setPinEnabled] = useState(false);
+  const [bioEnabled, setBioEnabled] = useState(false);
+  const [bioAvailable, setBioAvailable] = useState(false);
   const [budget, setBudget] = useState('');
   const [budgetSaving, setBudgetSaving] = useState(false);
 
@@ -47,6 +54,8 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     hasPin().then(setPinEnabled);
+    isBiometricEnabled().then(setBioEnabled);
+    isBiometricAvailable().then(setBioAvailable);
   }, []);
 
   const openPinSetup = () => {
@@ -208,6 +217,22 @@ export default function SettingsScreen() {
             <TouchableOpacity onPress={openPinSetup} style={{ marginTop: 12 }}>
               <Text style={styles.changePin}>تغيير الرمز</Text>
             </TouchableOpacity>
+          )}
+          {pinEnabled && bioAvailable && (
+            <View style={[styles.pinRow, { marginTop: 16, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 16 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pinLabel}>فتح ببصمة الوجه أو الإصبع</Text>
+                <Text style={styles.pinHint}>أسرع من كتابة الرمز في كل مرة</Text>
+              </View>
+              <Switch
+                value={bioEnabled}
+                onValueChange={async (v) => {
+                  await saveBiometricEnabled(v);
+                  setBioEnabled(v);
+                }}
+                trackColor={{ true: C.brand, false: C.border }}
+              />
+            </View>
           )}
         </View>
       </ScrollView>

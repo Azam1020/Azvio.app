@@ -328,11 +328,32 @@ async def list_transactions(type: str = ""):
     return await db.transactions.find(q, {"_id": 0}).sort([("date", -1), ("created_at", -1)]).to_list(2000)
 
 
+EXPENSE_CATEGORY_KEYWORDS = {
+    "معدات": ["معدات", "درون", "درونز", "كاميرا", "كاميرات", "بطارية", "بطاريات", "لنس", "عدسة", "جمبال", "ميموري", "كارت"],
+    "انتقال": ["بنزين", "وقود", "تكسي", "أوبر", "اوبر", "كريم", "انتقال", "توصيل", "مواصلات", "سفر", "تذكرة طيران"],
+    "فريلانسر": ["فريلانسر", "مونتير", "مصور خارجي", "مساعد", "مصمم", "مقاول من الباطن"],
+    "برامج واشتراكات": ["اشتراك", "adobe", "أدوبي", "برنامج", "تطبيق", "سوفتوير", "software", "subscription"],
+    "إيجار": ["إيجار", "ايجار", "استوديو", "مكتب"],
+    "صيانة": ["صيانة", "تصليح", "إصلاح"],
+    "تسويق": ["تسويق", "إعلان", "اعلان", "ads", "حملة", "بوست ممول"],
+}
+
+
+def guess_expense_category(description: str) -> str:
+    text = (description or "").lower()
+    for category, keywords in EXPENSE_CATEGORY_KEYWORDS.items():
+        if any(k.lower() in text for k in keywords):
+            return category
+    return ""
+
+
 @router.post("/transactions")
 async def create_transaction(body: TransactionCreate):
     doc = body.model_dump()
     if not doc.get("date"):
         doc["date"] = today_str()
+    if doc.get("type") == "expense" and not doc.get("category"):
+        doc["category"] = guess_expense_category(doc.get("description", ""))
     doc.update({"id": new_id(), "created_at": now_iso()})
     await db.transactions.insert_one(dict(doc))
     return doc

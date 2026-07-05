@@ -5,20 +5,36 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './AuthContext';
 import { useTheme } from './ThemeContext';
+import { authenticateWithBiometrics, isBiometricAvailable, isBiometricEnabled } from './biometric';
 import { F } from './theme';
 
 export default function PinLockScreen() {
-  const { user, unlockWithPin, logout } = useAuth();
+  const { user, unlockWithPin, unlockWithBiometric, logout } = useAuth();
   const { C } = useTheme();
   const styles = makeStyles(C);
   const insets = useSafeAreaInsets();
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
+  const [biometricReady, setBiometricReady] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
+  const tryBiometric = async () => {
+    const enabled = await isBiometricEnabled();
+    const available = enabled && (await isBiometricAvailable());
+    setBiometricReady(available);
+    if (available) {
+      const ok = await authenticateWithBiometrics();
+      if (ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        unlockWithBiometric();
+        return;
+      }
+    }
+    setTimeout(() => inputRef.current?.focus(), 300);
+  };
+
   useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 300);
-    return () => clearTimeout(t);
+    tryBiometric();
   }, []);
 
   const onChange = async (value: string) => {
@@ -59,6 +75,13 @@ export default function PinLockScreen() {
         ))}
       </TouchableOpacity>
 
+      {biometricReady && (
+        <TouchableOpacity style={styles.bioBtn} onPress={tryBiometric}>
+          <Ionicons name="scan-outline" size={22} color={C.brand} />
+          <Text style={styles.bioText}>فتح بالبصمة أو الوجه</Text>
+        </TouchableOpacity>
+      )}
+
       <TextInput
         ref={inputRef}
         value={pin}
@@ -84,4 +107,6 @@ const makeStyles = (C: any) =>
     dotFilled: { backgroundColor: C.brand, borderColor: C.brand },
     dotError: { backgroundColor: C.error, borderColor: C.error },
     hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
+    bioBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 28 },
+    bioText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
   });

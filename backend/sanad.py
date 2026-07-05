@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from database import db
+from crud_routes import guess_expense_category
 from llm_client import ask_text, ask_with_file, LLMError
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -155,7 +156,7 @@ async def run_action(action: dict):
             "type": d.get("type") or "expense",
             "amount": float(d.get("amount") or 0),
             "description": d.get("description") or "",
-            "category": d.get("category") or "",
+            "category": d.get("category") or (guess_expense_category(d.get("description") or "") if (d.get("type") or "expense") == "expense" else ""),
             "date": d.get("date") or today_str(),
             "client_name": d.get("client_name") or "",
             "debt_direction": d.get("debt_direction") or "owed_to_me",

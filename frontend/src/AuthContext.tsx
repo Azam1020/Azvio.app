@@ -22,6 +22,7 @@ type AuthState = {
   logout: () => Promise<void>;
   pinLocked: boolean;
   unlockWithPin: (pin: string) => Promise<boolean>;
+  unlockWithBiometric: () => void;
 };
 
 const AuthCtx = createContext<AuthState>({
@@ -32,6 +33,7 @@ const AuthCtx = createContext<AuthState>({
   logout: async () => {},
   pinLocked: false,
   unlockWithPin: async () => false,
+  unlockWithBiometric: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -130,8 +132,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return ok;
   };
 
+  const unlockWithBiometric = () => setPinLocked(false);
+
   return (
-    <AuthCtx.Provider value={{ user, loading, loginEmail, loginGoogle, logout, pinLocked, unlockWithPin }}>
+    <AuthCtx.Provider
+      value={{ user, loading, loginEmail, loginGoogle, logout, pinLocked, unlockWithPin, unlockWithBiometric }}
+    >
       {children}
     </AuthCtx.Provider>
   );

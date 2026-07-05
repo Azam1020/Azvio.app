@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "co.azvio.app"
+      "bundleIdentifier": "co.azvio.app",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "استخدم بصمة الوجه لفتح تطبيق AZVIO بسرعة وأمان"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -46,7 +49,8 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-local-authentication"
     ],
     "experiments": {
       "typedRoutes": true
