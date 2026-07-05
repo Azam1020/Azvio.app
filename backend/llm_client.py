@@ -113,6 +113,7 @@ async def _call_text(model: str, system: str, user: str, temperature: float = 0.
             timeout=60,
         )
     except Exception as e:  # noqa: BLE001
+        logger.warning(f"_call_text raw failure for {model}: {type(e).__module__}.{type(e).__name__}: {e!r}", exc_info=True)
         raise LLMError(f"{model} فشل: {e}") from e
     return _extract_text(resp)
 
