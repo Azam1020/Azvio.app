@@ -8,7 +8,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
-import { AuthProvider } from "@/src/AuthContext";
+import { AuthProvider, useAuth } from "@/src/AuthContext";
+import PinLockScreen from "@/src/PinLockScreen";
 
 
 // Disable logbox errors etc so that users can see the app
@@ -20,6 +21,19 @@ LogBox.ignoreAllLogs(true)
 // Font.loadAsync against a broken vendor path if any <Icon> mounts before
 // the family is registered — which throws on Android Expo Go.
 SplashScreen.preventAutoHideAsync();
+
+function Gate() {
+  const { pinLocked } = useAuth();
+  if (pinLocked) return <PinLockScreen />;
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: "#FFFFFF" },
+      }}
+    />
+  );
+}
 
 export default function RootLayout() {
   const [iconsLoaded, iconsError] = useIconFonts();
@@ -45,12 +59,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <StatusBar style="dark" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: "#FFFFFF" },
-            }}
-          />
+          <Gate />
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

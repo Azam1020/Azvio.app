@@ -72,8 +72,6 @@ export default function LoginScreen() {
           <Text style={styles.label}>البريد الإلكتروني</Text>
           <TextInput
             style={styles.input}
-            placeholder="Info@azvio.co"
-            placeholderTextColor={C.muted}
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
@@ -83,8 +81,6 @@ export default function LoginScreen() {
           <Text style={styles.label}>كلمة المرور</Text>
           <TextInput
             style={styles.input}
-            placeholder="••••••••"
-            placeholderTextColor={C.muted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}

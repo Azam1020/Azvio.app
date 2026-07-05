@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { api, clearToken, getToken, setToken } from './api';
 import { registerForPushNotifications } from './pushNotifications';
+import { hasPin, verifyPin } from './pin';
 
 export type User = {
   user_id: string;
@@ -19,6 +20,8 @@ type AuthState = {
   loginEmail: (email: string, password: string) => Promise<void>;
   loginGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  pinLocked: boolean;
+  unlockWithPin: (pin: string) => Promise<boolean>;
 };
 
 const AuthCtx = createContext<AuthState>({
@@ -27,11 +30,14 @@ const AuthCtx = createContext<AuthState>({
   loginEmail: async () => {},
   loginGoogle: async () => {},
   logout: async () => {},
+  pinLocked: false,
+  unlockWithPin: async () => false,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pinLocked, setPinLocked] = useState(false);
 
   const processLoginToken = async (loginToken: string) => {
     // The backend already verified this with Google directly and minted
@@ -66,6 +72,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (token) {
           const me = await api('/auth/me');
           setUser(me);
+          if (await hasPin()) {
+            setPinLocked(true);
+          }
         }
       } catch {
         await clearToken();
@@ -112,10 +121,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {}
     await clearToken();
     setUser(null);
+    setPinLocked(false);
+  };
+
+  const unlockWithPin = async (pin: string) => {
+    const ok = await verifyPin(pin);
+    if (ok) setPinLocked(false);
+    return ok;
   };
 
   return (
-    <AuthCtx.Provider value={{ user, loading, loginEmail, loginGoogle, logout }}>
+    <AuthCtx.Provider value={{ user, loading, loginEmail, loginGoogle, logout, pinLocked, unlockWithPin }}>
       {children}
     </AuthCtx.Provider>
   );
