@@ -31,6 +31,14 @@ const LOG_TYPES = [
   { key: 'form', label: 'نموذج' },
 ];
 
+const STAGES = [
+  { key: 'booked', label: 'محجوز' },
+  { key: 'shooting', label: 'تصوير' },
+  { key: 'editing', label: 'مونتاج' },
+  { key: 'review', label: 'مراجعة' },
+  { key: 'delivered', label: 'تسليم' },
+];
+
 const LOG_ICONS: Record<string, any> = {
   note: 'document-text-outline',
   whatsapp: 'logo-whatsapp',
@@ -72,6 +80,12 @@ export default function ClientDetail() {
   const setStatus = async (status: string) => {
     if (Platform.OS !== 'web') Haptics.selectionAsync();
     await api(`/clients/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+    load();
+  };
+
+  const setStage = async (stage: string) => {
+    if (Platform.OS !== 'web') Haptics.selectionAsync();
+    await api(`/clients/${id}`, { method: 'PUT', body: JSON.stringify({ stage }) });
     load();
   };
 
@@ -235,6 +249,35 @@ export default function ClientDetail() {
           ))}
         </View>
 
+        {/* Timeline */}
+        <View style={styles.timelineCard}>
+          <Text style={styles.timelineTitle}>مراحل المشروع</Text>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${(STAGES.findIndex((s) => s.key === (client.stage || 'booked')) / (STAGES.length - 1)) * 100}%`,
+                },
+              ]}
+            />
+          </View>
+          <View style={styles.stagesRow}>
+            {STAGES.map((s, i) => {
+              const currentIdx = STAGES.findIndex((x) => x.key === (client.stage || 'booked'));
+              const done = i <= currentIdx;
+              return (
+                <TouchableOpacity key={s.key} style={styles.stageItem} onPress={() => setStage(s.key)}>
+                  <View style={[styles.stageDot, done && styles.stageDotDone]}>
+                    {done && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                  </View>
+                  <Text style={[styles.stageLabel, done && styles.stageLabelDone]}>{s.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         {/* Quick actions */}
         <View style={styles.actionsRow}>
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: C.whatsapp }]} onPress={() => openWhatsApp(client.phone)}>
@@ -376,6 +419,26 @@ const styles = StyleSheet.create({
   statusBtn: { flex: 1, paddingVertical: 10, borderRadius: R.sm + 2, alignItems: 'center' },
   statusActive: { backgroundColor: C.brand },
   statusText: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2 },
+  timelineCard: { backgroundColor: C.surface, borderRadius: R.md, padding: 14, marginBottom: 12, ...shadow },
+  timelineTitle: { fontFamily: F.bold, fontSize: 13, color: C.onSurface, textAlign: 'right', marginBottom: 12 },
+  progressTrack: { height: 6, backgroundColor: C.surface2, borderRadius: 3, marginBottom: 10, overflow: 'hidden' },
+  progressFill: { height: 6, backgroundColor: C.brand, borderRadius: 3 },
+  stagesRow: { flexDirection: 'row-reverse', justifyContent: 'space-between' },
+  stageItem: { alignItems: 'center', flex: 1 },
+  stageDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: C.surface2,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  stageDotDone: { backgroundColor: C.brand, borderColor: C.brand },
+  stageLabel: { fontFamily: F.regular, fontSize: 10, color: C.muted, textAlign: 'center' },
+  stageLabelDone: { fontFamily: F.semibold, color: C.brand },
   actionsRow: { flexDirection: 'row-reverse', gap: 10, marginBottom: 12 },
   actionBtn: {
     flex: 1,

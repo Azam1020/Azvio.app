@@ -25,6 +25,9 @@ def new_id():
 
 # ============ Clients ============
 
+PROJECT_STAGES = ["booked", "shooting", "editing", "review", "delivered"]
+
+
 class ClientCreate(BaseModel):
     name: str
     phone: str = ""
@@ -32,6 +35,7 @@ class ClientCreate(BaseModel):
     sub_category: str = ""  # e.g. "عقاري", "فعاليات" - free-text linked to categories
     agreed_price: float = 0
     status: str = "in_progress"  # in_progress | delivered
+    stage: str = "booked"  # booked | shooting | editing | review | delivered
     drive_link: str = ""
     source: str = ""  # legacy source (kept for backwards compat)
     notes: str = ""
@@ -44,6 +48,7 @@ class ClientUpdate(BaseModel):
     sub_category: Optional[str] = None
     agreed_price: Optional[float] = None
     status: Optional[str] = None
+    stage: Optional[str] = None
     drive_link: Optional[str] = None
     source: Optional[str] = None
     notes: Optional[str] = None
@@ -82,6 +87,8 @@ async def get_client(client_id: str):
 @router.put("/clients/{client_id}")
 async def update_client(client_id: str, body: ClientUpdate):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if updates.get("stage") == "delivered":
+        updates["status"] = "delivered"
     updates["updated_at"] = now_iso()
     prev = await db.clients.find_one({"id": client_id}, {"_id": 0, "status": 1})
     r = await db.clients.update_one({"id": client_id}, {"$set": updates})

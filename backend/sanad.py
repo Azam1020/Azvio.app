@@ -34,6 +34,8 @@ ACTION_PROTOCOL = """
 <action>{"type":"add_content","data":{"title":"عنوان الفكرة","description":"","stage":"idea"}}</action>
 <action>{"type":"add_event","data":{"title":"تصوير مشروع X","event_type":"shooting","date":"YYYY-MM-DD","time":"16:00","client_name":"","notes":""}}</action>
 <action>{"type":"update_client_status","data":{"name":"اسم العميل","status":"delivered"}}</action>
+<action>{"type":"update_client_stage","data":{"name":"اسم العميل","stage":"editing"}}</action>
+قيم "stage" الممكنة بالترتيب: booked (محجوز) → shooting (تصوير) → editing (مونتاج) → review (مراجعة العميل) → delivered (تسليم نهائي). استخدمها لما يذكر المستخدم مرحلة مشروع بالاسم (مثلاً "خلصت تصوير فلان" يعني ينتقل لمرحلة editing، أو "فلان بالمراجعة" يعني review).
 <action>{"type":"delete_client","data":{"name":"اسم العميل"}}</action>
 <action>{"type":"clear_all_data","data":{"confirm":true}}</action>
 
@@ -189,13 +191,38 @@ async def run_action(action: dict):
     if t == "update_client_status":
         name = d.get("name") or ""
         status = d.get("status") or "delivered"
+        updates = {"status": status, "updated_at": now}
+        stage = d.get("stage")
+        if stage in ("booked", "shooting", "editing", "review", "delivered"):
+            updates["stage"] = stage
         r = await db.clients.update_one(
             {"name": {"$regex": re.escape(name), "$options": "i"}},
-            {"$set": {"status": status, "updated_at": now}},
+            {"$set": updates},
         )
         if r.matched_count:
             label = "تم التسليم" if status == "delivered" else "قيد التنفيذ"
             return f"✅ تم تحديث حالة العميل {name} إلى: {label}"
+        return f"⚠️ لم أجد عميلاً باسم {name}"
+    if t == "update_client_stage":
+        name = d.get("name") or ""
+        stage = d.get("stage") or "booked"
+        if stage not in ("booked", "shooting", "editing", "review", "delivered"):
+            return "⚠️ مرحلة غير معروفة"
+        updates = {"stage": stage, "updated_at": now}
+        if stage == "delivered":
+            updates["status"] = "delivered"
+        r = await db.clients.update_one(
+            {"name": {"$regex": re.escape(name), "$options": "i"}}, {"$set": updates}
+        )
+        if r.matched_count:
+            stage_labels = {
+                "booked": "محجوز",
+                "shooting": "تصوير",
+                "editing": "مونتاج",
+                "review": "مراجعة العميل",
+                "delivered": "تسليم نهائي",
+            }
+            return f"✅ نقلت مشروع {name} لمرحلة: {stage_labels[stage]}"
         return f"⚠️ لم أجد عميلاً باسم {name}"
     if t == "delete_client":
         name = d.get("name") or ""
