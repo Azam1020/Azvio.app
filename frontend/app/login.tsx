@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -11,21 +11,32 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Redirect } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/src/AuthContext';
+import { hasSeenOnboarding } from '@/src/onboarding';
 import { C, F, R, shadow } from '@/src/theme';
 
 export default function LoginScreen() {
   const { user, loading, loginEmail } = useAuth();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [checkedOnboarding, setCheckedOnboarding] = useState(false);
+
+  useEffect(() => {
+    hasSeenOnboarding().then((seen) => {
+      if (!seen) router.replace('/onboarding');
+      else setCheckedOnboarding(true);
+    });
+  }, []);
 
   if (!loading && user) return <Redirect href="/(tabs)" />;
+  if (!checkedOnboarding) return null;
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password) {
