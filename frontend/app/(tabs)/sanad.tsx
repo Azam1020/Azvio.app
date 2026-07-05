@@ -16,6 +16,7 @@ import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
+import * as Speech from 'expo-speech';
 import { api, apiUpload } from '@/src/api';
 import { confirmAsync } from '@/src/ui';
 import { C, F, R, shadow } from '@/src/theme';
@@ -36,6 +37,23 @@ export default function SanadScreen() {
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+
+  const speak = (id: string, text: string) => {
+    Speech.stop();
+    if (speakingId === id) {
+      setSpeakingId(null);
+      return;
+    }
+    setSpeakingId(id);
+    Speech.speak(text.replace(/[*#_`]/g, ''), {
+      language: 'ar-SA',
+      onDone: () => setSpeakingId(null),
+      onStopped: () => setSpeakingId(null),
+      onError: () => setSpeakingId(null),
+    });
+  };
 
   useEffect(() => {
     const showSub = Keyboard.addListener(
@@ -106,7 +124,9 @@ export default function SanadScreen() {
           body: JSON.stringify({ message, session_id: 'default',}),
         });
       }
-      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: data.reply }]);
+      const replyId = `a-${Date.now()}`;
+      setMessages((prev) => [...prev, { id: replyId, role: 'assistant', content: data.reply }]);
+      if (autoSpeak) speak(replyId, data.reply);
     } catch (e: any) {
       setMessages((prev) => [
         ...prev,
@@ -156,6 +176,22 @@ export default function SanadScreen() {
             <Text style={styles.headerTitle}>سند</Text>
             <Text style={styles.headerSub}>مساعدك الذكي في AZVIO</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => {
+              setAutoSpeak((v) => !v);
+              Speech.stop();
+              setSpeakingId(null);
+            }}
+            hitSlop={8}
+            testID="auto-speak-btn"
+            style={{ marginLeft: 4 }}
+          >
+            <Ionicons
+              name={autoSpeak ? 'volume-high' : 'volume-mute-outline'}
+              size={20}
+              color={autoSpeak ? C.brand : C.muted}
+            />
+          </TouchableOpacity>
           <TouchableOpacity onPress={clearChat} hitSlop={8} testID="clear-chat-btn">
             <Ionicons name="trash-outline" size={20} color={C.muted} />
           </TouchableOpacity>
@@ -189,6 +225,19 @@ export default function SanadScreen() {
             style={[styles.bubble, m.role === 'user' ? styles.userBubble : styles.aiBubble]}
           >
             <Text style={[styles.bubbleText, m.role === 'user' && { color: '#FFF' }]}>{m.content}</Text>
+            {m.role === 'assistant' && (
+              <TouchableOpacity
+                onPress={() => speak(m.id, m.content)}
+                style={styles.speakBtn}
+                hitSlop={6}
+              >
+                <Ionicons
+                  name={speakingId === m.id ? 'stop-circle' : 'volume-medium-outline'}
+                  size={18}
+                  color={C.brand}
+                />
+              </TouchableOpacity>
+            )}
           </View>
         ))}
         {sending && (
@@ -309,6 +358,7 @@ const styles = StyleSheet.create({
   userBubble: { alignSelf: 'flex-start', backgroundColor: C.brand, borderBottomLeftRadius: 4 },
   aiBubble: { alignSelf: 'flex-end', backgroundColor: C.surface, borderBottomRightRadius: 4, ...shadow },
   bubbleText: { fontFamily: F.regular, fontSize: 14, color: C.onSurface, textAlign: 'right', lineHeight: 23 },
+  speakBtn: { marginTop: 6, alignSelf: 'flex-start' },
   typingBubble: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   typingText: { fontFamily: F.regular, fontSize: 13, color: C.muted },
   chipsRow: { paddingHorizontal: 12, gap: 8, alignItems: 'center', flexDirection: 'row-reverse' },
