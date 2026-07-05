@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { api } from '@/src/api';
 import { useAuth } from '@/src/AuthContext';
 import { useTheme, ThemeMode } from '@/src/ThemeContext';
@@ -15,6 +16,7 @@ import {
 
 export default function SettingsScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const { C, mode, setMode } = useTheme();
   const styles = makeStyles(C);
   const [pinEnabled, setPinEnabled] = useState(false);
@@ -235,6 +237,24 @@ export default function SettingsScreen() {
             </View>
           )}
         </View>
+
+        <Text style={styles.sectionTitle}>عن التطبيق</Text>
+        <View style={styles.card}>
+          {[
+            { label: 'من نحن', href: '/about' },
+            { label: 'سياسة الخصوصية', href: '/privacy-policy' },
+            { label: 'شروط الاستخدام', href: '/terms' },
+          ].map((item, i) => (
+            <TouchableOpacity
+              key={item.href}
+              style={[styles.linkRow, i > 0 && { borderTopWidth: 1, borderTopColor: C.border }]}
+              onPress={() => router.push(item.href as any)}
+            >
+              <Ionicons name="chevron-back" size={16} color={C.muted} />
+              <Text style={styles.linkText}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </ScrollView>
 
       <AppModal visible={pinModal} title="تعيين رمز سريع" onClose={() => setPinModal(false)} onSave={savePinCode}>
@@ -289,4 +309,6 @@ const makeStyles = (C: any) =>
     modeChipActive: { backgroundColor: C.brand },
     modeText: { fontFamily: F.semibold, fontSize: 12, color: C.onSurface2 },
     modeTextActive: { color: '#FFF' },
+    linkRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, gap: 8 },
+    linkText: { flex: 1, fontFamily: F.semibold, fontSize: 14, color: C.onSurface, textAlign: 'right' },
   });
