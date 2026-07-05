@@ -13,6 +13,30 @@ export default function SettingsScreen() {
   const { C, mode, setMode } = useTheme();
   const styles = makeStyles(C);
   const [pinEnabled, setPinEnabled] = useState(false);
+  const [budget, setBudget] = useState('');
+  const [budgetSaving, setBudgetSaving] = useState(false);
+
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      api('/business/settings')
+        .then((s) => setBudget(s.monthly_expense_budget ? String(s.monthly_expense_budget) : ''))
+        .catch(() => {});
+    }
+  }, [user?.role]);
+
+  const saveBudget = async () => {
+    setBudgetSaving(true);
+    try {
+      await api('/business/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ monthly_expense_budget: parseFloat(budget) || 0 }),
+      });
+      Alert.alert('تم', 'تم حفظ الميزانية الشهرية');
+    } catch (e: any) {
+      Alert.alert('تعذّر الحفظ', e?.message || 'حدث خطأ');
+    }
+    setBudgetSaving(false);
+  };
   const [pinModal, setPinModal] = useState(false);
   const [pinValue, setPinValue] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
@@ -122,6 +146,25 @@ export default function SettingsScreen() {
             ))}
           </View>
         </View>
+
+        {user?.role === 'admin' && (
+          <>
+            <Text style={styles.sectionTitle}>الميزانية الشهرية للمصاريف</Text>
+            <View style={styles.card}>
+              <Field
+                label="حد المصاريف الشهري (ر.س)"
+                value={budget}
+                onChangeText={setBudget}
+                keyboardType="numeric"
+                placeholder="مثال: 5000"
+              />
+              <TouchableOpacity style={styles.btn} onPress={saveBudget} disabled={budgetSaving}>
+                <Text style={styles.btnText}>{budgetSaving ? 'جارٍ الحفظ...' : 'حفظ الميزانية'}</Text>
+              </TouchableOpacity>
+              <Text style={styles.pinHint}>إذا تجاوزت مصاريف الشهر هذا الحد، يصلك تنبيه تلقائي</Text>
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionTitle}>تغيير كلمة المرور</Text>
         <View style={styles.card}>

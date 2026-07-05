@@ -83,12 +83,41 @@ async def build_daily_summary() -> str:
     return " — ".join(parts) if parts else "لا يوجد مواعيد اليوم، يوم مناسب تتفرّغ لمتابعة عملائك."
 
 
+def month_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+async def check_budget_alert() -> str | None:
+    """Returns an alert message if this month's expenses exceed the configured
+    budget and we haven't already alerted for this month, else None."""
+    settings = await db.business_settings.find_one({"id": "default"}) or {}
+    budget = settings.get("monthly_expense_budget")
+    if not budget:
+        return None
+    this_month = month_str()
+    if settings.get("budget_alert_sent_month") == this_month:
+        return None
+    txs = await db.transactions.find(
+        {"type": "expense", "date": {"$regex": f"^{this_month}"}}, {"amount": 1}
+    ).to_list(10000)
+    total = sum(t.get("amount", 0) for t in txs)
+    if total <= budget:
+        return None
+    await db.business_settings.update_one(
+        {"id": "default"}, {"$set": {"budget_alert_sent_month": this_month}}, upsert=True
+    )
+    return f"مصاريف هذا الشهر ({total:,.0f} ر.س) تجاوزت الميزانية المحددة ({budget:,.0f} ر.س)."
+
+
 async def run_daily_reminders():
     """Called by the scheduler once a day. Sends every user with a
     registered push token a task summary + a motivational line."""
     summary = await build_daily_summary()
     quote = random.choice(MOTIVATIONAL_QUOTES)
+    budget_alert = await check_budget_alert()
     users = await db.users.find({"push_token": {"$exists": True, "$ne": ""}}, {"_id": 0}).to_list(500)
     for u in users:
         await send_expo_push(u["push_token"], "AZVIO — تذكير يومي", summary)
         await send_expo_push(u["push_token"], "سند", quote)
+        if budget_alert:
+            await send_expo_push(u["push_token"], "⚠️ تنبيه الميزانية", budget_alert)
