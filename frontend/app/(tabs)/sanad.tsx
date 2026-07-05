@@ -1,6 +1,7 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -34,6 +35,22 @@ export default function SanadScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const scrollRef = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
@@ -218,7 +235,7 @@ export default function SanadScreen() {
       )}
 
       {/* Input bar */}
-      <View style={[styles.inputBar, { paddingBottom: insets.bottom + 8 }]}>
+      <View style={[styles.inputBar, { paddingBottom: keyboardVisible ? 8 : insets.bottom + 8 }]}>
         <TouchableOpacity style={styles.attachBtn} onPress={pickFile} testID="attach-btn">
           <Ionicons name="attach" size={22} color={C.brand} />
         </TouchableOpacity>
