@@ -36,6 +36,13 @@ ACTION_PROTOCOL = """
 <action>{"type":"update_client_status","data":{"name":"اسم العميل","status":"delivered"}}</action>
 <action>{"type":"add_category","data":{"name":"عقاري","service_type":"drone","description":"شرح مختصر يفهمه سند فقط"}}</action>
 <action>{"type":"add_service","data":{"title":"اسم الخدمة","description":"وصف مختصر","service_type":"drone","price_from":500,"price_to":2000}}</action>
+<action>{"type":"report_issue","data":{"kind":"bug","title":"عنوان قصير للمشكلة","description":"وصف تفصيلي بكلام المستخدم نفسه","screen":"اسم الشاشة إن ذكرها المستخدم"}}</action>
+
+استخدم "report_issue" فقط حين يصف المستخدم خطأ بالتطبيق نفسه (شي ما يشتغل صحيح) أو يطلب ميزة جديدة بالتطبيق — هذي حالة مختلفة عن بقية الأوامر أعلاه (اللي لبيانات العمل: عملاء، فواتير...). لما يحصل هذا:
+1. اجعل "kind" يساوي "bug" للأخطاء، أو "feature" لطلبات المزايا الجديدة.
+2. لخّص المشكلة بعنوان قصير واضح، والوصف يبقى بكلام المستخدم قريب من الأصل.
+3. أخبر المستخدم بجملة ودودة إن ملاحظته وصلت لعزّام وسيراجعها.
+4. لا تحاول أبداً تنفيذ التعديل بنفسك أو التحدث كأنك عدّلت الكود — أنت فقط توصّل الملاحظة.
 
 قيم مسموحة:
 - service_type: drone أو editing أو both
@@ -216,6 +223,21 @@ async def run_action(action: dict):
         }
         await db.services.insert_one(dict(doc))
         return f"✅ تمت إضافة الخدمة: {doc['title']}"
+    if t == "report_issue":
+        kind = d.get("kind") or "bug"
+        doc = {
+            "id": uuid.uuid4().hex,
+            "kind": kind if kind in ("bug", "feature") else "bug",
+            "title": (d.get("title") or "ملاحظة من سند").strip(),
+            "description": (d.get("description") or "").strip(),
+            "screen": (d.get("screen") or "").strip(),
+            "status": "open",
+            "source": "sanad",
+            "created_at": now,
+        }
+        await db.tickets.insert_one(dict(doc))
+        label = "الخطأ" if doc["kind"] == "bug" else "الطلب"
+        return f"✅ وصلت ملاحظتك، سجّلتها كـ{label}: {doc['title']}. عزّام بيراجعها."
     return None
 
 

@@ -229,7 +229,10 @@ export default function Dashboard() {
     { title: 'روابط سريعة', sub: 'روابطك اليومية', icon: 'link' as const, href: '/links' },
     { title: 'الإعدادات', sub: 'حسابك وكلمة المرور', icon: 'settings' as const, href: '/settings' },
     ...(user?.role === 'admin'
-      ? [{ title: 'إدارة المستخدمين', sub: 'إضافة وصلاحيات الفريق', icon: 'people' as const, href: '/team' }]
+      ? [
+          { title: 'إدارة المستخدمين', sub: 'إضافة وصلاحيات الفريق', icon: 'people' as const, href: '/team' },
+          { title: 'ملاحظات سند', sub: 'الأخطاء والمزايا المُقترحة', icon: 'chatbubbles' as const, href: '/tickets' },
+        ]
       : []),
   ];
 
