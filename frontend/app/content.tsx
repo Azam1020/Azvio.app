@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -34,6 +34,13 @@ export default function ContentScreen() {
       setItems(await api('/content'));
     } catch {}
   }, []);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -85,7 +92,10 @@ export default function ContentScreen() {
           </View>
         }
       />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
+      >
         {items.length === 0 && (
           <Empty icon="film-outline" text="ابدأ بتتبع محتواك" hint="أضف أفكار الفيديوهات وتابعها من الفكرة حتى النشر" />
         )}

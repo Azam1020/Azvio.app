@@ -45,6 +45,13 @@ export default function ClientsScreen() {
     } catch {}
   }, []);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
   useFocusEffect(
     useCallback(() => {
       load();
@@ -93,6 +100,8 @@ export default function ClientsScreen() {
         data={filtered}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         ListEmptyComponent={
           <Empty
             icon="people-outline"

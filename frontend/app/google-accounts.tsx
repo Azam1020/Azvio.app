@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +30,13 @@ export default function GoogleAccountsScreen() {
     } catch {}
     setLoading(false);
   }, []);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -71,7 +79,10 @@ export default function GoogleAccountsScreen() {
     <View style={{ flex: 1, backgroundColor: C.surface2 }}>
       <ScreenHeader title="حسابات Google" subtitle="ربط تقويم Google بالتطبيق" canBack />
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
+      >
         {/* Explainer */}
         <View style={styles.explainCard}>
           <View style={styles.explainHeader}>

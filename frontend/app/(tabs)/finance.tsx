@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -100,6 +101,13 @@ export default function FinanceScreen() {
       setStats(st);
     } catch {}
   }, []);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -344,7 +352,10 @@ export default function FinanceScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
+      >
         {segment === 'overview' && (
           <>
             <View style={styles.netCard}>

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
@@ -30,6 +30,13 @@ export default function ServicesScreen() {
       setServices(await api('/services'));
     } catch {}
   }, []);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -99,7 +106,10 @@ export default function ServicesScreen() {
           </View>
         }
       />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
+      >
         {services.length === 0 && <Empty icon="briefcase-outline" text="لا توجد خدمات" hint="أضف خدماتك وأسعارها" />}
         {services.map((s) => {
           const icon = TYPE_ICONS[s.service_type] || 'briefcase';

@@ -4,6 +4,7 @@ import {
   Alert,
   Linking,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -54,6 +55,13 @@ export default function ClientDetail() {
       setClient(await api(`/clients/${id}`));
     } catch {}
   }, [id]);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -206,7 +214,10 @@ export default function ClientDetail() {
           </TouchableOpacity>
         }
       />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
+      >
         {/* Status */}
         <View style={styles.statusRow}>
           {[

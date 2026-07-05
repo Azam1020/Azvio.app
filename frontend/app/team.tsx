@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
@@ -25,6 +25,13 @@ export default function TeamScreen() {
       setUsers(await api('/team'));
     } catch {}
   }, []);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -73,7 +80,10 @@ export default function TeamScreen() {
           </TouchableOpacity>
         }
       />
-      <ScrollView contentContainerStyle={styles.wrap}>
+      <ScrollView
+        contentContainerStyle={styles.wrap}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
+      >
         {users.length === 0 ? (
           <Empty icon="people-outline" text="لا يوجد مستخدمون إضافيون بعد" hint="اضغط + لإضافة أول عضو فريق" />
         ) : (

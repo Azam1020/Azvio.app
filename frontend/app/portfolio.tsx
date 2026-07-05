@@ -64,6 +64,13 @@ export default function PortfolioScreen() {
     } catch {}
   }, []);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
   useFocusEffect(
     useCallback(() => {
       load();
@@ -202,6 +209,8 @@ export default function PortfolioScreen() {
         numColumns={2}
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         columnWrapperStyle={{ gap: 12, marginBottom: 12 }}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         ListEmptyComponent={
           <Empty
             icon="images-outline"

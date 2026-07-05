@@ -61,6 +61,13 @@ export default function WhatsAppScreen() {
     } catch {}
   }, []);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
   useFocusEffect(
     useCallback(() => {
       load();
@@ -159,6 +166,8 @@ export default function WhatsAppScreen() {
         data={items}
         keyExtractor={(x) => x.id}
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         ListEmptyComponent={
           <Empty
             icon="logo-whatsapp"

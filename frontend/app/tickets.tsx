@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
@@ -33,6 +33,13 @@ export default function TicketsScreen() {
     }, [load, filter])
   );
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load(filter);
+    setRefreshing(false);
+  }, [load, filter]);
+
   const toggleResolve = async (t: Ticket) => {
     try {
       await api(`/tickets/${t.id}/${t.status === 'open' ? 'resolve' : 'reopen'}`, { method: 'PATCH' });
@@ -56,7 +63,10 @@ export default function TicketsScreen() {
           </TouchableOpacity>
         ))}
       </View>
-      <ScrollView contentContainerStyle={styles.wrap}>
+      <ScrollView
+        contentContainerStyle={styles.wrap}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
+      >
         {tickets.length === 0 ? (
           <Empty icon="chatbubbles-outline" text="لا توجد ملاحظات حالياً" hint="أي خطأ أو طلب ميزة يرسله المستخدم لسند يظهر هنا" />
         ) : (

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Linking, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
@@ -35,6 +35,13 @@ export default function LinksScreen() {
       setLinks(await api('/links'));
     } catch {}
   }, []);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -90,7 +97,10 @@ export default function LinksScreen() {
           </TouchableOpacity>
         }
       />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
+      >
         {links.length === 0 && (
           <Empty icon="link-outline" text="لا توجد روابط بعد" hint="أضف روابطك اليومية للوصول السريع" />
         )}
