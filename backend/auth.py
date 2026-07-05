@@ -22,7 +22,6 @@ public_router = APIRouter()
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "azvio-dev-secret")
 JWT_ALGO = "HS256"
-WHITELIST = {"info@azvio.co", "azzam@azvio.co"}
 DEFAULT_PASSWORD = "Azvio@2026"
 
 # --- Direct Google OAuth (login) — no third-party proxy ---
@@ -115,13 +114,19 @@ async def get_current_user(authorization: str = Header(default=None)) -> dict:
     raise HTTPException(status_code=401, detail="انتهت الجلسة، يرجى تسجيل الدخول مجدداً")
 
 
+async def get_current_admin(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="هذا الإجراء يتطلب صلاحية مدير")
+    return user
+
+
 @router.post("/auth/login")
 async def login(body: LoginRequest):
     el = body.email.strip().lower()
-    if el not in WHITELIST:
-        raise HTTPException(status_code=401, detail="هذا الحساب غير مصرح له بالدخول إلى AZVIO")
     user = await db.users.find_one({"email_lower": el}, {"_id": 0})
-    if not user or not user.get("password_hash") or not bcrypt.checkpw(
+    if not user or user.get("active") is False:
+        raise HTTPException(status_code=401, detail="هذا الحساب غير مصرح له بالدخول إلى AZVIO")
+    if not user.get("password_hash") or not bcrypt.checkpw(
         body.password.encode(), user["password_hash"].encode()
     ):
         raise HTTPException(status_code=401, detail="البريد الإلكتروني أو كلمة المرور غير صحيحة")
@@ -189,25 +194,13 @@ async def google_login_callback(request: Request):
 
     email = userinfo.get("email")
     el = (email or "").strip().lower()
-    if el not in WHITELIST:
-        return RedirectResponse(url=f"{APP_LOGIN_REDIRECT_URI}?status=error&reason=not_whitelisted")
 
     user = await db.users.find_one({"email_lower": el}, {"_id": 0})
-    if user:
-        if userinfo.get("picture"):
-            await db.users.update_one({"email_lower": el}, {"$set": {"picture": userinfo["picture"]}})
-            user["picture"] = userinfo["picture"]
-    else:
-        user = {
-            "user_id": f"user_{uuid.uuid4().hex[:12]}",
-            "email": email,
-            "email_lower": el,
-            "name": userinfo.get("name") or el,
-            "picture": userinfo.get("picture"),
-            "role": "admin",
-            "created_at": now_utc().isoformat(),
-        }
-        await db.users.insert_one(dict(user))
+    if not user or user.get("active") is False:
+        return RedirectResponse(url=f"{APP_LOGIN_REDIRECT_URI}?status=error&reason=not_registered")
+    if userinfo.get("picture"):
+        await db.users.update_one({"email_lower": el}, {"$set": {"picture": userinfo["picture"]}})
+        user["picture"] = userinfo["picture"]
 
     # We mint our own opaque session token — never Google's or a proxy's.
     session_token = uuid.uuid4().hex

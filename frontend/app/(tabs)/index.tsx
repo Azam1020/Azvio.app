@@ -227,6 +227,10 @@ export default function Dashboard() {
     { title: 'رؤى الأسبوع', sub: 'تقرير سند الأسبوعي', icon: 'analytics' as const, href: '/insights' },
     { title: 'حسابات Google', sub: 'ربط تقويم Google', icon: 'logo-google' as const, href: '/google-accounts' },
     { title: 'روابط سريعة', sub: 'روابطك اليومية', icon: 'link' as const, href: '/links' },
+    { title: 'الإعدادات', sub: 'حسابك وكلمة المرور', icon: 'settings' as const, href: '/settings' },
+    ...(user?.role === 'admin'
+      ? [{ title: 'إدارة المستخدمين', sub: 'إضافة وصلاحيات الفريق', icon: 'people' as const, href: '/team' }]
+      : []),
   ];
 
   // Chart data prep

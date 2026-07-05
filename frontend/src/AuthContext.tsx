@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { api, clearToken, getToken, setToken } from './api';
+import { registerForPushNotifications } from './pushNotifications';
 
 export type User = {
   user_id: string;
@@ -72,6 +73,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     })();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      registerForPushNotifications();
+    }
+  }, [user?.user_id]);
 
   const loginEmail = async (email: string, password: string) => {
     const data = await api('/auth/login', {
