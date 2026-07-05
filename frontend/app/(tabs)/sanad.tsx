@@ -37,7 +37,7 @@ export default function SanadScreen() {
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(true);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
 
   const speak = (id: string, text: string) => {
