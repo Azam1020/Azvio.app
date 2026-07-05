@@ -158,6 +158,9 @@ export function DateField({
                   mode="date"
                   display={Platform.OS === 'ios' ? 'inline' : 'default'}
                   style={Platform.OS === 'ios' ? styles.nativePickerIOS : undefined}
+                  themeVariant="light"
+                  textColor="#000000"
+                  accentColor={C.brand}
                   onChange={(_: any, d?: Date) => {
                     if (Platform.OS === 'android') {
                       setModal(false);
@@ -285,6 +288,9 @@ export function TimeField({
                   is24Hour={false}
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   style={Platform.OS === 'ios' ? styles.nativeTimePickerIOS : undefined}
+                  themeVariant="light"
+                  textColor="#000000"
+                  accentColor={C.brand}
                   onChange={(_: any, d?: Date) => {
                     if (Platform.OS === 'android') {
                       setModal(false);
