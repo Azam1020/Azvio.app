@@ -9,6 +9,7 @@ import { StatusBar } from "expo-status-bar";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/AuthContext";
+import { ThemeProvider, useTheme } from "@/src/ThemeContext";
 import PinLockScreen from "@/src/PinLockScreen";
 
 
@@ -24,14 +25,18 @@ SplashScreen.preventAutoHideAsync();
 
 function Gate() {
   const { pinLocked } = useAuth();
+  const { isDark, C } = useTheme();
   if (pinLocked) return <PinLockScreen />;
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: "#FFFFFF" },
-      }}
-    />
+    <>
+      <StatusBar style={isDark ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: C.surface },
+        }}
+      />
+    </>
   );
 }
 
@@ -57,10 +62,11 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <StatusBar style="dark" />
-          <Gate />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <Gate />
+          </AuthProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

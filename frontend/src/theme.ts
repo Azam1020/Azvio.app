@@ -1,5 +1,5 @@
 // AZVIO Light Theme — per /app/design_guidelines.json
-export const C = {
+export const lightColors = {
   surface: '#FFFFFF',
   onSurface: '#111111',
   surface2: '#F2F2F7',
@@ -20,6 +20,32 @@ export const C = {
   borderStrong: '#C7C7CC',
   whatsapp: '#25D366',
 };
+
+export const darkColors: typeof lightColors = {
+  surface: '#1C1C1E',
+  onSurface: '#F2F2F7',
+  surface2: '#2C2C2E',
+  onSurface2: '#D1D1D6',
+  surface3: '#3A3A3C',
+  muted: '#9B9BA1',
+  inverse: '#F2F2F7',
+  onInverse: '#111111',
+  brand: '#4FB3B6',
+  onBrand: '#0B1F20',
+  brandSoft: '#20393A',
+  brandDark: '#7ED0D2',
+  brandInk: '#E4F1F2',
+  success: '#30D158',
+  warning: '#FFD60A',
+  error: '#FF453A',
+  border: '#3A3A3C',
+  borderStrong: '#54545A',
+  whatsapp: '#25D366',
+};
+
+// Default/legacy export — screens not yet migrated to useTheme() keep using
+// this static light palette until they're converted.
+export const C = lightColors;
 
 export const F = {
   regular: 'Cairo-Regular',

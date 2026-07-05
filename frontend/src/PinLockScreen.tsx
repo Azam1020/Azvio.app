@@ -3,12 +3,15 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './AuthContext';
-import { C, F, R } from './theme';
+import { useTheme } from './ThemeContext';
+import { F, R } from './theme';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
 
 export default function PinLockScreen() {
   const { user, unlockWithPin, logout } = useAuth();
+  const { C } = useTheme();
+  const styles = makeStyles(C);
   const insets = useSafeAreaInsets();
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
@@ -75,16 +78,17 @@ export default function PinLockScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: C.surface, alignItems: 'center', paddingHorizontal: 24 },
-  hello: { fontFamily: F.bold, fontSize: 20, color: C.onSurface, marginBottom: 6 },
-  sub: { fontFamily: F.regular, fontSize: 14, color: C.muted, marginBottom: 32 },
-  dotsRow: { flexDirection: 'row-reverse', gap: 16, marginBottom: 48 },
-  dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: C.border },
-  dotFilled: { backgroundColor: C.brand, borderColor: C.brand },
-  dotError: { backgroundColor: C.error, borderColor: C.error },
-  pad: { flexDirection: 'row', flexWrap: 'wrap', width: 260, justifyContent: 'center' },
-  key: { width: 80, height: 70, alignItems: 'center', justifyContent: 'center' },
-  keyText: { fontFamily: F.semibold, fontSize: 24, color: C.onSurface },
-  logoutText: { fontFamily: F.regular, fontSize: 13, color: C.muted, textDecorationLine: 'underline' },
-});
+const makeStyles = (C: any) =>
+  StyleSheet.create({
+    wrap: { flex: 1, backgroundColor: C.surface, alignItems: 'center', paddingHorizontal: 24 },
+    hello: { fontFamily: F.bold, fontSize: 20, color: C.onSurface, marginBottom: 6 },
+    sub: { fontFamily: F.regular, fontSize: 14, color: C.muted, marginBottom: 32 },
+    dotsRow: { flexDirection: 'row-reverse', gap: 16, marginBottom: 48 },
+    dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: C.border },
+    dotFilled: { backgroundColor: C.brand, borderColor: C.brand },
+    dotError: { backgroundColor: C.error, borderColor: C.error },
+    pad: { flexDirection: 'row', flexWrap: 'wrap', width: 260, justifyContent: 'center' },
+    key: { width: 80, height: 70, alignItems: 'center', justifyContent: 'center' },
+    keyText: { fontFamily: F.semibold, fontSize: 24, color: C.onSurface },
+    logoutText: { fontFamily: F.regular, fontSize: 13, color: C.muted, textDecorationLine: 'underline' },
+  });

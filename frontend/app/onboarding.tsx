@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { markOnboardingSeen } from '@/src/onboarding';
-import { C, F, R } from '@/src/theme';
+import { useTheme } from '@/src/ThemeContext';
+import { F, R } from '@/src/theme';
 
 const SLIDES = [
   {
@@ -26,6 +27,8 @@ const SLIDES = [
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const { C } = useTheme();
+  const styles = makeStyles(C);
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const isLast = step === SLIDES.length - 1;
@@ -67,25 +70,26 @@ export default function OnboardingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: C.surface, paddingHorizontal: 24 },
-  skip: { alignSelf: 'flex-start' },
-  skipText: { fontFamily: F.semibold, fontSize: 14, color: C.muted },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  iconCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: C.brandSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 28,
-  },
-  title: { fontFamily: F.bold, fontSize: 22, color: C.onSurface, textAlign: 'center', marginBottom: 12 },
-  body: { fontFamily: F.regular, fontSize: 15, color: C.muted, textAlign: 'center', lineHeight: 24, paddingHorizontal: 12 },
-  dotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 24 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.border },
-  dotActive: { backgroundColor: C.brand, width: 22 },
-  nextBtn: { backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 16, alignItems: 'center' },
-  nextText: { fontFamily: F.bold, fontSize: 16, color: '#FFF' },
-});
+const makeStyles = (C: any) =>
+  StyleSheet.create({
+    wrap: { flex: 1, backgroundColor: C.surface, paddingHorizontal: 24 },
+    skip: { alignSelf: 'flex-start' },
+    skipText: { fontFamily: F.semibold, fontSize: 14, color: C.muted },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    iconCircle: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: C.brandSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 28,
+    },
+    title: { fontFamily: F.bold, fontSize: 22, color: C.onSurface, textAlign: 'center', marginBottom: 12 },
+    body: { fontFamily: F.regular, fontSize: 15, color: C.muted, textAlign: 'center', lineHeight: 24, paddingHorizontal: 12 },
+    dotsRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 24 },
+    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.border },
+    dotActive: { backgroundColor: C.brand, width: 22 },
+    nextBtn: { backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 16, alignItems: 'center' },
+    nextText: { fontFamily: F.bold, fontSize: 16, color: '#FFF' },
+  });

@@ -15,11 +15,14 @@ import { Redirect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/src/AuthContext';
+import { useTheme } from '@/src/ThemeContext';
 import { hasSeenOnboarding } from '@/src/onboarding';
-import { C, F, R, shadow } from '@/src/theme';
+import { F, R, shadow } from '@/src/theme';
 
 export default function LoginScreen() {
   const { user, loading, loginEmail } = useAuth();
+  const { C } = useTheme();
+  const styles = makeStyles(C);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
@@ -120,45 +123,42 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flexGrow: 1, paddingHorizontal: 24 },
-  brandWrap: { alignItems: 'center', marginBottom: 36 },
-  logoImg: { width: 88, height: 88, marginBottom: 12 },
-  wordmark: { fontFamily: F.bold, fontSize: 32, letterSpacing: 4, color: C.onSurface },
-  tagline: { fontFamily: F.regular, fontSize: 13, color: C.muted, marginTop: 10, textAlign: 'center' },
-  card: {
-    backgroundColor: C.surface,
-    borderRadius: R.lg,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: C.border,
-    ...shadow,
-  },
-  googleBtn: {
-    display: 'none' as any,
-  },
-  googleText: { fontFamily: F.semibold, fontSize: 15, color: C.onSurface },
-  label: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, marginBottom: 6, textAlign: 'right' },
-  input: {
-    backgroundColor: C.surface2,
-    borderRadius: R.md,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 13 : 10,
-    fontFamily: F.regular,
-    fontSize: 15,
-    color: C.onSurface,
-    textAlign: 'right',
-    marginBottom: 14,
-  },
-  error: { fontFamily: F.regular, fontSize: 13, color: C.error, textAlign: 'center', marginBottom: 10 },
-  loginBtn: {
-    backgroundColor: C.brand,
-    borderRadius: R.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 50,
-  },
-  loginText: { fontFamily: F.bold, fontSize: 16, color: '#FFF' },
-  footer: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'center', marginTop: 24 },
-});
+const makeStyles = (C: any) =>
+  StyleSheet.create({
+    container: { flexGrow: 1, paddingHorizontal: 24 },
+    brandWrap: { alignItems: 'center', marginBottom: 36 },
+    logoImg: { width: 88, height: 88, marginBottom: 12 },
+    wordmark: { fontFamily: F.bold, fontSize: 32, letterSpacing: 4, color: C.onSurface },
+    tagline: { fontFamily: F.regular, fontSize: 13, color: C.muted, marginTop: 10, textAlign: 'center' },
+    card: {
+      backgroundColor: C.surface,
+      borderRadius: R.lg,
+      padding: 20,
+      borderWidth: 1,
+      borderColor: C.border,
+      ...shadow,
+    },
+    label: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, marginBottom: 6, textAlign: 'right' },
+    input: {
+      backgroundColor: C.surface2,
+      borderRadius: R.md,
+      paddingHorizontal: 14,
+      paddingVertical: Platform.OS === 'ios' ? 13 : 10,
+      fontFamily: F.regular,
+      fontSize: 15,
+      color: C.onSurface,
+      textAlign: 'right',
+      marginBottom: 14,
+    },
+    error: { fontFamily: F.regular, fontSize: 13, color: C.error, textAlign: 'center', marginBottom: 10 },
+    loginBtn: {
+      backgroundColor: C.brand,
+      borderRadius: R.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 50,
+    },
+    loginText: { fontFamily: F.bold, fontSize: 16, color: '#FFF' },
+    footer: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'center', marginTop: 24 },
+  });
