@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
+  Dimensions,
   Modal,
   Platform,
   Pressable,
@@ -11,6 +12,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { C, F, R, shadow } from './theme';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
 
 // Only import native picker when needed
 let NativePicker: any = null;
@@ -153,7 +156,7 @@ export function DateField({
                 <NativePicker
                   value={tempDate}
                   mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
                   style={Platform.OS === 'ios' ? styles.nativePickerIOS : undefined}
                   onChange={(_: any, d?: Date) => {
                     if (Platform.OS === 'android') {
@@ -281,7 +284,7 @@ export function TimeField({
                   mode="time"
                   is24Hour={false}
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  style={Platform.OS === 'ios' ? styles.nativePickerIOS : undefined}
+                  style={Platform.OS === 'ios' ? styles.nativeTimePickerIOS : undefined}
                   onChange={(_: any, d?: Date) => {
                     if (Platform.OS === 'android') {
                       setModal(false);
@@ -409,7 +412,8 @@ export function SelectField({
 }
 
 const styles = StyleSheet.create({
-  nativePickerIOS: { height: 200, width: '100%' },
+  nativePickerIOS: { height: 380, width: SCREEN_WIDTH - 32 },
+  nativeTimePickerIOS: { height: 200, width: SCREEN_WIDTH - 32 },
   pickerFallback: { paddingVertical: 32, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' },
   pickerFallbackText: { fontFamily: F.regular, fontSize: 14, color: C.muted, textAlign: 'center', lineHeight: 22 },
   wrap: { marginBottom: 14 },
