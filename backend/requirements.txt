@@ -134,3 +134,5 @@ watchfiles==1.2.0
 websockets==15.0.1
 yarl==1.24.2
 zipp==4.1.0
+arabic-reshaper==3.0.0
+python-bidi==0.6.6
