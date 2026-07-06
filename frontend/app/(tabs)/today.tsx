@@ -59,14 +59,26 @@ export default function TodayScreen() {
       // جرب الـ Endpoint المحسّن أولاً
       try {
         const enhanced = await api('/tasks/today/enhanced');
-        setGroups(enhanced.sections);
-        setStats(enhanced.stats);
-        setMotivation(enhanced.motivation);
+        setGroups({
+          overdue: enhanced?.sections?.overdue ?? [],
+          today: enhanced?.sections?.today ?? [],
+          upcoming: enhanced?.sections?.upcoming ?? [],
+        });
+        setStats(enhanced?.stats ?? { completed: 0, pending: 0, completion_rate: 0 });
+        setMotivation(enhanced?.motivation ?? '');
       } catch {
         // أسقف للـ Endpoint القديم
-        setGroups(await api('/tasks/my-today'));
+        const fallback = await api('/tasks/my-today');
+        setGroups({
+          overdue: fallback?.overdue ?? [],
+          today: fallback?.today ?? [],
+          upcoming: fallback?.upcoming ?? [],
+        });
       }
-    } catch {}
+    } catch {
+      // في حال فشل الاثنين، خلي القيم فاضية بدل ما تنهار الشاشة
+      setGroups({ overdue: [], today: [], upcoming: [] });
+    }
   }, []);
 
   const [refreshing, setRefreshing] = useState(false);

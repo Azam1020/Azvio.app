@@ -152,11 +152,12 @@ async def get_enhanced_today(user: dict = Depends(get_current_user)):
     """شاشة اليوم المحسّنة مع إحصائيات وتحفيز."""
     today = today_str()
     
-    # احصل على مهام اليوم والمتأخرة
+    # احصل على جميع مهام المستخدم غير المكتملة + المكتملة اليوم فقط
     all_tasks = await db.tasks.find({"assignee_id": user["user_id"]}, {"_id": 0}).to_list(1000)
     
     overdue = [t for t in all_tasks if t.get("due_date") and t["due_date"] < today and t["status"] != "done"]
     due_today = [t for t in all_tasks if t.get("due_date") == today and t["status"] != "done"]
+    upcoming = [t for t in all_tasks if t["status"] != "done" and (not t.get("due_date") or t["due_date"] > today)]
     completed_today = [t for t in all_tasks if t.get("due_date") == today and t["status"] == "done"]
     
     # احسب الإحصائيات
@@ -170,7 +171,8 @@ async def get_enhanced_today(user: dict = Depends(get_current_user)):
         "date": today,
         "sections": {
             "overdue": overdue,
-            "due_today": due_today,
+            "today": due_today,
+            "upcoming": upcoming,
             "completed": completed_today
         },
         "stats": {
