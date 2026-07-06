@@ -13,7 +13,8 @@
       "bundleIdentifier": "co.azvio.app",
       "infoPlist": {
         "NSFaceIDUsageDescription": "استخدم بصمة الوجه لفتح تطبيق AZVIO بسرعة وأمان",
-        "NSMicrophoneUsageDescription": "يحتاج سند إذن الميكروفون لتسجيل رسائلك الصوتية والرد عليك"
+        "NSMicrophoneUsageDescription": "يحتاج سند إذن الميكروفون لتسجيل رسائلك الصوتية والرد عليك",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -22,7 +23,15 @@
         "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
-      "package": "co.azvio.app"
+      "package": "co.azvio.app",
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -61,6 +70,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5a221446-693e-42a1-96ba-bdfc679822d8"
+      }
     }
   }
 }
