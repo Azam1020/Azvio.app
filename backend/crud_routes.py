@@ -53,6 +53,9 @@ class ClientUpdate(BaseModel):
     drive_link: Optional[str] = None
     source: Optional[str] = None
     notes: Optional[str] = None
+    approval_signature: Optional[str] = None
+    approved_at: Optional[str] = None
+    portal_token: Optional[str] = None
 
 
 class LogCreate(BaseModel):
@@ -72,7 +75,13 @@ async def list_clients(search: str = ""):
 @router.post("/clients")
 async def create_client(body: ClientCreate):
     doc = body.model_dump()
-    doc.update({"id": new_id(), "logs": [], "created_at": now_iso(), "updated_at": now_iso()})
+    doc.update({
+        "id": new_id(),
+        "logs": [],
+        "portal_token": uuid.uuid4().hex[:16],
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    })
     await db.clients.insert_one(dict(doc))
     return doc
 
@@ -930,6 +939,9 @@ async def seed_defaults():
                 "created_at": now_iso(),
             },
         ])
+    # Backfill portal_token for clients created before this feature existed
+    async for c in db.clients.find({"portal_token": {"$exists": False}}, {"id": 1}):
+        await db.clients.update_one({"id": c["id"]}, {"$set": {"portal_token": uuid.uuid4().hex[:16]}})
 
 
 # ============ Testimonials (client reviews shown inside the app) ============

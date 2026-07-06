@@ -24,6 +24,7 @@ import { SERVICE_LABELS, openWhatsApp } from '@/src/clientHelpers';
 import { CategoryPicker } from '@/src/CategoryPicker';
 import { SanadPriceOpinion } from '@/src/SanadPriceOpinion';
 import { ServiceTypeChips, useServiceTypeLabel } from '@/src/ServiceTypeChips';
+import { SignaturePad, SignatureView } from '@/src/SignaturePad';
 
 const LOG_TYPES = [
   { key: 'note', label: 'ملاحظة' },
@@ -86,6 +87,13 @@ export default function ClientDetail() {
   const setStage = async (stage: string) => {
     if (Platform.OS !== 'web') Haptics.selectionAsync();
     await api(`/clients/${id}`, { method: 'PUT', body: JSON.stringify({ stage }) });
+    load();
+  };
+
+  const [signModal, setSignModal] = useState(false);
+  const saveSignature = async (pathData: string) => {
+    await api(`/clients/${id}`, { method: 'PUT', body: JSON.stringify({ approval_signature: pathData }) });
+    setSignModal(false);
     load();
   };
 
@@ -278,6 +286,22 @@ export default function ClientDetail() {
           </View>
         </View>
 
+        {/* Signature / approval */}
+        <View style={styles.timelineCard}>
+          <Text style={styles.timelineTitle}>موافقة العميل</Text>
+          {client.approval_signature ? (
+            <>
+              <SignatureView pathData={client.approval_signature} height={90} />
+              <Text style={styles.signedHint}>تم توقيع الموافقة</Text>
+            </>
+          ) : (
+            <TouchableOpacity style={styles.signPromptBtn} onPress={() => setSignModal(true)}>
+              <Ionicons name="create-outline" size={18} color={C.brand} />
+              <Text style={styles.signPromptText}>وثّق توقيع موافقة العميل</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* Quick actions */}
         <View style={styles.actionsRow}>
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: C.whatsapp }]} onPress={() => openWhatsApp(client.phone)}>
@@ -398,6 +422,10 @@ export default function ClientDetail() {
         <Field label="رابط Google Drive" value={form.drive_link} onChangeText={(v) => setForm({ ...form, drive_link: v })} autoCapitalize="none" />
         <Field label="ملاحظات" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} multiline />
       </AppModal>
+
+      <AppModal visible={signModal} title="توقيع موافقة العميل" onClose={() => setSignModal(false)}>
+        <SignaturePad onSave={saveSignature} onCancel={() => setSignModal(false)} />
+      </AppModal>
     </View>
   );
 }
@@ -439,6 +467,17 @@ const styles = StyleSheet.create({
   stageDotDone: { backgroundColor: C.brand, borderColor: C.brand },
   stageLabel: { fontFamily: F.regular, fontSize: 10, color: C.muted, textAlign: 'center' },
   stageLabelDone: { fontFamily: F.semibold, color: C.brand },
+  signedHint: { fontFamily: F.semibold, fontSize: 12, color: C.success, textAlign: 'center', marginTop: 8 },
+  signPromptBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    backgroundColor: C.brandSoft,
+    borderRadius: R.md,
+  },
+  signPromptText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
   actionsRow: { flexDirection: 'row-reverse', gap: 10, marginBottom: 12 },
   actionBtn: {
     flex: 1,
