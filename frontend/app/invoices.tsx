@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
@@ -31,8 +31,12 @@ const EMPTY_FORM = {
   service_type: 'drone',
   sub_category: '',
   is_quote: true,
+  apply_vat: true,
   vat_rate: '15',
   notes: '',
+  show_sub_category: true,
+  show_notes: true,
+  design: 'brand' as 'brand' | 'minimal',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -134,8 +138,12 @@ export default function InvoicesScreen() {
           service_type: form.service_type,
           sub_category: form.sub_category,
           is_quote: form.is_quote,
+          apply_vat: form.apply_vat,
           vat_rate: parseFloat(form.vat_rate) || 0,
           notes: form.notes,
+          show_sub_category: form.show_sub_category,
+          show_notes: form.show_notes,
+          design: form.design,
           items: cleanItems,
         }),
       });
@@ -273,6 +281,13 @@ export default function InvoicesScreen() {
           onChange={(v) => setForm({ ...form, service_type: v })}
         />
 
+        <Field
+          label="الفئة الفرعية (اختياري)"
+          value={form.sub_category}
+          onChangeText={(v) => setForm({ ...form, sub_category: v })}
+          placeholder="مثال: عقاري، فعاليات"
+        />
+
         <TouchableOpacity style={styles.pricingBtn} onPress={() => setPricingOpen(true)}>
           <Ionicons name="sparkles" size={16} color={C.brand} />
           <Text style={styles.pricingBtnText}>احسب سعرًا مقترحًا من سند</Text>
@@ -305,7 +320,54 @@ export default function InvoicesScreen() {
           <Text style={styles.addItemText}>+ إضافة بند</Text>
         </TouchableOpacity>
 
-        <Field label="نسبة الضريبة (%)" value={form.vat_rate} onChangeText={(v) => setForm({ ...form, vat_rate: v })} keyboardType="numeric" />
+        <Text style={styles.chipsLabel}>خيارات المستند — تحكّم كامل</Text>
+        <View style={styles.optionsCard}>
+          <View style={styles.optionRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.optionLabel}>تطبيق ضريبة القيمة المضافة</Text>
+              <Text style={styles.optionHint}>عطّلها لو لا تريد إظهار أي ضريبة بالمستند</Text>
+            </View>
+            <Switch
+              value={form.apply_vat}
+              onValueChange={(v) => setForm({ ...form, apply_vat: v })}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+          </View>
+          {form.apply_vat && (
+            <Field
+              label="نسبة الضريبة (%)"
+              value={form.vat_rate}
+              onChangeText={(v) => setForm({ ...form, vat_rate: v })}
+              keyboardType="numeric"
+            />
+          )}
+          <View style={styles.optionRow}>
+            <Text style={[styles.optionLabel, { flex: 1 }]}>إظهار الفئة الفرعية بالمستند</Text>
+            <Switch
+              value={form.show_sub_category}
+              onValueChange={(v) => setForm({ ...form, show_sub_category: v })}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+          </View>
+          <View style={styles.optionRow}>
+            <Text style={[styles.optionLabel, { flex: 1 }]}>إظهار الملاحظات بالمستند</Text>
+            <Switch
+              value={form.show_notes}
+              onValueChange={(v) => setForm({ ...form, show_notes: v })}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+          </View>
+          <Text style={styles.chipsLabel}>تصميم المستند</Text>
+          <Chips
+            options={[
+              { key: 'brand', label: 'هوية AZVIO (تركواز)' },
+              { key: 'minimal', label: 'بسيط (أبيض وأسود)' },
+            ]}
+            value={form.design}
+            onChange={(v) => setForm({ ...form, design: v as 'brand' | 'minimal' })}
+          />
+        </View>
+
         <Field label="ملاحظات (اختياري)" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} multiline />
       </AppModal>
 
@@ -413,6 +475,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   addItemText: { fontFamily: F.semibold, fontSize: 12, color: C.brand, marginBottom: 14 },
+  optionsCard: { backgroundColor: C.surface2, borderRadius: R.md, padding: 12, marginBottom: 14 },
+  optionRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 12 },
+  optionLabel: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface, textAlign: 'right' },
+  optionHint: { fontFamily: F.regular, fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 2 },
   calcBtn: { backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 12, alignItems: 'center', marginTop: 4 },
   calcBtnText: { fontFamily: F.bold, fontSize: 13, color: '#FFF' },
   resultCard: { backgroundColor: C.brandSoft, borderRadius: R.md, padding: 14, marginTop: 16 },

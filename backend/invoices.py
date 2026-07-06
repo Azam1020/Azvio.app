@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from pymongo import ReturnDocument
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -75,9 +76,13 @@ class DocumentCreate(BaseModel):
     service_type: str = "drone"
     sub_category: str = ""
     items: list[InvoiceItem]
+    apply_vat: bool = True
     vat_rate: float = 15
     is_quote: bool = False
     notes: str = ""
+    show_sub_category: bool = True
+    show_notes: bool = True
+    design: str = "brand"  # brand (teal AZVIO) | minimal (black & white)
 
 
 class DocumentUpdate(BaseModel):
@@ -85,9 +90,9 @@ class DocumentUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-def _totals(items: list[dict], vat_rate: float) -> dict:
+def _totals(items: list[dict], vat_rate: float, apply_vat: bool = True) -> dict:
     subtotal = sum(i["amount"] for i in items)
-    vat_amount = round(subtotal * vat_rate / 100, 2)
+    vat_amount = round(subtotal * vat_rate / 100, 2) if apply_vat else 0.0
     return {"subtotal": round(subtotal, 2), "vat_amount": vat_amount, "total": round(subtotal + vat_amount, 2)}
 
 
@@ -121,14 +126,18 @@ async def create_document(body: DocumentCreate):
         "service_type": body.service_type,
         "sub_category": body.sub_category,
         "items": items,
-        "vat_rate": body.vat_rate,
+        "apply_vat": body.apply_vat,
+        "vat_rate": body.vat_rate if body.apply_vat else 0,
         "is_quote": body.is_quote,
         "notes": body.notes,
+        "show_sub_category": body.show_sub_category,
+        "show_notes": body.show_notes,
+        "design": body.design,
         "status": "draft",
         "converted_to_invoice_id": None,
         "created_at": now_iso(),
         "updated_at": now_iso(),
-        **_totals(items, body.vat_rate),
+        **_totals(items, body.vat_rate, body.apply_vat),
     }
     await db.documents.insert_one(dict(doc))
     return doc
@@ -187,15 +196,19 @@ async def document_pdf(doc_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="المستند غير موجود")
 
+    accent = colors.HexColor("#3E9194") if doc.get("design", "brand") == "brand" else colors.black
+
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     width, height = A4
     right = width - 50
     y = height - 60
 
-    title = "عرض سعر" if doc["is_quote"] else "فاتورة ضريبية"
+    title = "عرض سعر" if doc["is_quote"] else "فاتورة" + (" ضريبية" if doc.get("apply_vat", True) else "")
+    c.setFillColor(accent)
     c.setFont("Cairo-Bold", 20)
     c.drawRightString(right, y, rtl("AZVIO — " + title))
+    c.setFillColor(colors.black)
     y -= 22
     c.setFont("Cairo", 11)
     c.drawRightString(right, y, rtl(f"رقم المستند: {doc['display_number']}"))
@@ -205,12 +218,19 @@ async def document_pdf(doc_id: str):
 
     c.setFont("Cairo-Bold", 13)
     c.drawRightString(right, y, rtl(f"إلى: {doc['client_name']}"))
-    y -= 30
+    y -= 20
+    if doc.get("show_sub_category", True) and doc.get("sub_category"):
+        c.setFont("Cairo", 10)
+        c.drawRightString(right, y, rtl(f"الفئة: {doc['sub_category']}"))
+        y -= 20
+    y -= 10
 
     # Table header
+    c.setFillColor(accent)
     c.setFont("Cairo-Bold", 11)
     c.drawRightString(right, y, rtl("الوصف"))
     c.drawString(50, y, "المبلغ (ر.س)")
+    c.setFillColor(colors.black)
     y -= 6
     c.line(50, y, right, y)
     y -= 18
@@ -225,19 +245,23 @@ async def document_pdf(doc_id: str):
     c.line(50, y, right, y)
     y -= 22
 
+    apply_vat = doc.get("apply_vat", True)
     c.setFont("Cairo", 11)
-    c.drawRightString(right, y, rtl("الإجمالي قبل الضريبة"))
-    c.drawString(50, y, f"{doc['subtotal']:,.2f}")
-    y -= 18
-    c.drawRightString(right, y, rtl(f"ضريبة القيمة المضافة ({doc['vat_rate']:.0f}٪)"))
-    c.drawString(50, y, f"{doc['vat_amount']:,.2f}")
-    y -= 20
+    if apply_vat:
+        c.drawRightString(right, y, rtl("الإجمالي قبل الضريبة"))
+        c.drawString(50, y, f"{doc['subtotal']:,.2f}")
+        y -= 18
+        c.drawRightString(right, y, rtl(f"ضريبة القيمة المضافة ({doc['vat_rate']:.0f}٪)"))
+        c.drawString(50, y, f"{doc['vat_amount']:,.2f}")
+        y -= 20
+    c.setFillColor(accent)
     c.setFont("Cairo-Bold", 13)
     c.drawRightString(right, y, rtl("الإجمالي النهائي"))
     c.drawString(50, y, f"{doc['total']:,.2f}")
+    c.setFillColor(colors.black)
     y -= 40
 
-    if doc.get("notes"):
+    if doc.get("show_notes", True) and doc.get("notes"):
         c.setFont("Cairo", 10)
         c.drawRightString(right, y, rtl("ملاحظات: " + doc["notes"]))
         y -= 20
