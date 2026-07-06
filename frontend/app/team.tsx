@@ -6,15 +6,25 @@ import { api } from '@/src/api';
 import { AppModal, Chips, Empty, Field, ScreenHeader } from '@/src/ui';
 import { C, F, R, shadow } from '@/src/theme';
 
+type Role = 'admin' | 'photographer' | 'editor' | 'project_manager';
+
 type TeamUser = {
   user_id: string;
   email: string;
   name: string;
-  role: 'admin' | 'member';
+  role: Role;
   active?: boolean;
 };
 
-const EMPTY_FORM = { name: '', email: '', password: '', role: 'member' as 'member' | 'admin' };
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'مدير',
+  photographer: 'مصوّر',
+  editor: 'مونتير',
+  project_manager: 'مدير مشروع',
+  member: 'عضو فريق',
+};
+
+const EMPTY_FORM = { name: '', email: '', password: '', role: 'photographer' as Role };
 
 export default function TeamScreen() {
   const [users, setUsers] = useState<TeamUser[]>([]);
@@ -136,7 +146,7 @@ export default function TeamScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{u.name}</Text>
                 <Text style={styles.email}>{u.email}</Text>
-                <Text style={styles.role}>{u.role === 'admin' ? 'مدير — صلاحية كاملة' : 'عضو فريق'}</Text>
+                <Text style={styles.role}>{ROLE_LABELS[u.role] || 'عضو فريق'}</Text>
               </View>
               <Switch
                 value={u.active !== false}
@@ -175,11 +185,13 @@ export default function TeamScreen() {
         <Text style={styles.chipsLabel}>الصلاحية</Text>
         <Chips
           options={[
-            { key: 'member', label: 'عضو فريق' },
+            { key: 'photographer', label: 'مصوّر' },
+            { key: 'editor', label: 'مونتير' },
+            { key: 'project_manager', label: 'مدير مشروع' },
             { key: 'admin', label: 'مدير' },
           ]}
           value={form.role}
-          onChange={(v) => setForm({ ...form, role: v as 'member' | 'admin' })}
+          onChange={(v) => setForm({ ...form, role: v as Role })}
         />
         {editing && (
           <TouchableOpacity onPress={remove} style={{ marginTop: 16, alignItems: 'center' }}>

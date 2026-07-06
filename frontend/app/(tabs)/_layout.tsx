@@ -39,6 +39,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="today"
+        options={{
+          title: 'اليوم',
+          tabBarIcon: ({ color, size }) => <Ionicons name="checkmark-circle" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="clients"
         options={{
           title: 'العملاء',

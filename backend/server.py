@@ -16,6 +16,7 @@ from portfolio import router as portfolio_router
 from team import router as team_router
 from notifications import router as notifications_router, run_daily_reminders
 from tickets import router as tickets_router
+from tasks import router as tasks_router
 
 app = FastAPI(title="AZVIO API")
 
@@ -31,6 +32,7 @@ app.include_router(portfolio_router, prefix="/api")
 app.include_router(team_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
 app.include_router(tickets_router, prefix="/api")
+app.include_router(tasks_router, prefix="/api")
 
 
 @app.get("/api/")

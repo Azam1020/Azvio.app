@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from auth import get_current_admin, get_current_user, public_user
 from database import db
+from roles import is_valid_role, role_label, ROLES
 
 router = APIRouter(prefix="/team", tags=["team"])
 
@@ -27,7 +28,7 @@ class UserCreate(BaseModel):
     email: str
     name: str
     password: str
-    role: str = "member"  # member | admin
+    role: str = "photographer"  # admin | photographer | editor | project_manager
 
 
 class UserRoleUpdate(BaseModel):
@@ -41,6 +42,11 @@ class UserEdit(BaseModel):
     password: str | None = None
 
 
+@router.get("/roles", dependencies=[Depends(get_current_user)])
+async def list_roles():
+    return [{"key": k, "label": v} for k, v in ROLES.items()]
+
+
 @router.get("", dependencies=[Depends(get_current_admin)])
 async def list_users():
     users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(500)
@@ -52,8 +58,8 @@ async def create_user(body: UserCreate):
     el = body.email.strip().lower()
     if await db.users.find_one({"email_lower": el}):
         raise HTTPException(status_code=400, detail="هذا البريد الإلكتروني مسجّل مسبقاً")
-    if body.role not in ("member", "admin"):
-        raise HTTPException(status_code=400, detail="الصلاحية يجب أن تكون member أو admin")
+    if not is_valid_role(body.role):
+        raise HTTPException(status_code=400, detail="صلاحية غير معروفة")
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="كلمة المرور يجب أن تكون 8 أحرف على الأقل")
     user = {
@@ -87,8 +93,8 @@ async def edit_user(user_id: str, body: UserEdit):
         updates["email"] = body.email.strip()
         updates["email_lower"] = el
     if body.role is not None:
-        if body.role not in ("member", "admin"):
-            raise HTTPException(status_code=400, detail="الصلاحية يجب أن تكون member أو admin")
+        if not is_valid_role(body.role):
+            raise HTTPException(status_code=400, detail="صلاحية غير معروفة")
         updates["role"] = body.role
     if body.password is not None and body.password:
         if len(body.password) < 8:
@@ -113,8 +119,8 @@ async def delete_user(user_id: str, current_admin: dict = Depends(get_current_ad
 
 @router.patch("/{user_id}/role", dependencies=[Depends(get_current_admin)])
 async def update_role(user_id: str, body: UserRoleUpdate):
-    if body.role not in ("member", "admin"):
-        raise HTTPException(status_code=400, detail="الصلاحية يجب أن تكون member أو admin")
+    if not is_valid_role(body.role):
+        raise HTTPException(status_code=400, detail="صلاحية غير معروفة")
     result = await db.users.update_one({"user_id": user_id}, {"$set": {"role": body.role}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
