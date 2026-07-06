@@ -19,6 +19,18 @@ DEFAULT_WIDGETS_VISIBLE: Dict[str, bool] = {
     "events": True,
 }
 
+DEFAULT_NOTIF_PREFS: Dict[str, bool] = {
+    "project": True,      # task/project reminders (daily summary, budget alerts)
+    "team": True,          # team-related notifications
+    "motivational": True,  # daily motivational quote from Sanad
+}
+
+
+class NotificationPrefsUpdate(BaseModel):
+    project: Optional[bool] = None
+    team: Optional[bool] = None
+    motivational: Optional[bool] = None
+
 
 class DashboardPrefsUpdate(BaseModel):
     order: Optional[List[str]] = None
@@ -30,7 +42,8 @@ def _default_prefs() -> Dict[str, Any]:
         "dashboard": {
             "order": DEFAULT_WIDGETS_ORDER[:],
             "visible": dict(DEFAULT_WIDGETS_VISIBLE),
-        }
+        },
+        "notifications": dict(DEFAULT_NOTIF_PREFS),
     }
 
 
@@ -48,7 +61,13 @@ async def _get_user_prefs(user_id: str) -> Dict[str, Any]:
         if w not in order:
             order.append(w)
     visible = {**DEFAULT_WIDGETS_VISIBLE, **{k: v for k, v in saved_visible.items() if k in DEFAULT_WIDGETS_ORDER}}
-    return {"dashboard": {"order": order, "visible": visible}}
+    notif = {**DEFAULT_NOTIF_PREFS, **{k: v for k, v in (doc.get("notifications") or {}).items() if k in DEFAULT_NOTIF_PREFS}}
+    return {"dashboard": {"order": order, "visible": visible}, "notifications": notif}
+
+
+async def get_notification_prefs(user_id: str) -> Dict[str, bool]:
+    prefs = await _get_user_prefs(user_id)
+    return prefs["notifications"]
 
 
 class BusinessSettingsUpdate(BaseModel):
@@ -102,6 +121,21 @@ async def update_dashboard(body: DashboardPrefsUpdate, user=Depends(get_current_
         upsert=True,
     )
     return {"dashboard": dashboard}
+
+
+@router.put("/user/settings/notifications")
+async def update_notification_prefs(body: NotificationPrefsUpdate, user=Depends(get_current_user)):
+    prefs = await _get_user_prefs(user["user_id"])
+    notif = prefs["notifications"]
+    for k, v in body.model_dump().items():
+        if v is not None and k in DEFAULT_NOTIF_PREFS:
+            notif[k] = bool(v)
+    await db.user_prefs.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"user_id": user["user_id"], "notifications": notif}},
+        upsert=True,
+    )
+    return {"notifications": notif}
 
 
 @router.post("/user/settings/dashboard/reset")

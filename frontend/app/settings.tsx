@@ -24,6 +24,7 @@ export default function SettingsScreen() {
   const [bioAvailable, setBioAvailable] = useState(false);
   const [budget, setBudget] = useState('');
   const [budgetSaving, setBudgetSaving] = useState(false);
+  const [notifPrefs, setNotifPrefs] = useState({ project: true, team: true, motivational: true });
 
   useEffect(() => {
     if (user?.role === 'admin') {
@@ -58,7 +59,18 @@ export default function SettingsScreen() {
     hasPin().then(setPinEnabled);
     isBiometricEnabled().then(setBioEnabled);
     isBiometricAvailable().then(setBioAvailable);
+    api('/user/settings')
+      .then((s) => s.notifications && setNotifPrefs(s.notifications))
+      .catch(() => {});
   }, []);
+
+  const toggleNotifPref = async (key: 'project' | 'team' | 'motivational', value: boolean) => {
+    const next = { ...notifPrefs, [key]: value };
+    setNotifPrefs(next);
+    try {
+      await api('/user/settings/notifications', { method: 'PUT', body: JSON.stringify({ [key]: value }) });
+    } catch {}
+  };
 
   const openPinSetup = () => {
     setPinValue('');
@@ -176,6 +188,30 @@ export default function SettingsScreen() {
             </View>
           </>
         )}
+
+        <Text style={styles.sectionTitle}>الإشعارات</Text>
+        <View style={styles.card}>
+          {[
+            { key: 'project' as const, label: 'المشروع والمهام', hint: 'التذكير اليومي وتنبيهات الميزانية' },
+            { key: 'team' as const, label: 'الفريق', hint: 'تحديثات وأنشطة أعضاء الفريق' },
+            { key: 'motivational' as const, label: 'تحفيزية', hint: 'رسالة تحفيزية يومية من سند' },
+          ].map((item, i) => (
+            <View
+              key={item.key}
+              style={[styles.pinRow, i > 0 && { marginTop: 16, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 16 }]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pinLabel}>{item.label}</Text>
+                <Text style={styles.pinHint}>{item.hint}</Text>
+              </View>
+              <Switch
+                value={notifPrefs[item.key]}
+                onValueChange={(v) => toggleNotifPref(item.key, v)}
+                trackColor={{ true: C.brand, false: C.border }}
+              />
+            </View>
+          ))}
+        </View>
 
         <Text style={styles.sectionTitle}>تغيير كلمة المرور</Text>
         <View style={styles.card}>

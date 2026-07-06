@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -171,7 +172,12 @@ async def upload_client_log_file(
     text: str = Form(""),
     log_type: str = Form("file"),
 ):
-    """Multipart upload for a client log attachment. Stores in Supabase Storage."""
+    """Multipart upload for a client log attachment. Stores in Supabase Storage.
+
+    The stored/display filename follows a standard convention (client name +
+    date + service type) instead of the raw uploaded filename, to avoid
+    messy/inconsistent names as files pile up.
+    """
     from supabase_storage import is_configured, upload_bytes
     if not is_configured():
         raise HTTPException(status_code=500, detail="Supabase غير مُهيّأ")
@@ -179,10 +185,17 @@ async def upload_client_log_file(
     if len(contents) > 15 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="الملف كبير جداً (الحد 15MB)")
     log_id = new_id()
+
+    client = await db.clients.find_one({"id": client_id}, {"name": 1, "service_type": 1})
+    orig_ext = os.path.splitext(file.filename or "")[1]
+    safe_client = "".join(ch for ch in (client or {}).get("name", "عميل") if ch.isalnum() or ch in " _-").strip() or "عميل"
+    service = (client or {}).get("service_type", "") or ""
+    standardized_name = f"{safe_client}_{today_str()}" + (f"_{service}" if service else "") + orig_ext
+
     up = await upload_bytes(
         client_id=client_id,
         log_id=log_id,
-        filename=file.filename or "attachment",
+        filename=standardized_name,
         data=contents,
         content_type=file.content_type or "application/octet-stream",
     )

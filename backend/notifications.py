@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from database import db
+from user_settings import get_notification_prefs
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,10 @@ async def run_daily_reminders():
     budget_alert = await check_budget_alert()
     users = await db.users.find({"push_token": {"$exists": True, "$ne": ""}}, {"_id": 0}).to_list(500)
     for u in users:
-        await send_expo_push(u["push_token"], "AZVIO — تذكير يومي", summary)
-        await send_expo_push(u["push_token"], "سند", quote)
-        if budget_alert:
+        prefs = await get_notification_prefs(u["user_id"])
+        if prefs.get("project", True):
+            await send_expo_push(u["push_token"], "AZVIO — تذكير يومي", summary)
+        if prefs.get("motivational", True):
+            await send_expo_push(u["push_token"], "سند", quote)
+        if budget_alert and prefs.get("project", True):
             await send_expo_push(u["push_token"], "⚠️ تنبيه الميزانية", budget_alert)
