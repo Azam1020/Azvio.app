@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
 import { api, apiUpload } from '@/src/api';
@@ -147,24 +148,18 @@ export default function FinanceScreen() {
     load();
   };
 
-  const pickInvoice = async () => {
-    setInvoiceError('');
-    const res = await DocumentPicker.getDocumentAsync({
-      type: ['application/pdf', 'image/*'],
-      copyToCacheDirectory: true,
-    });
-    if (res.canceled || !res.assets?.length) return;
-    const asset = res.assets[0];
+  const analyzeInvoiceAsset = async (asset: { uri: string; name?: string; mimeType?: string; file?: any }) => {
     setAnalyzing(true);
+    setInvoiceError('');
     try {
       const fd = new FormData();
-      if (Platform.OS === 'web' && (asset as any).file) {
-        fd.append('file', (asset as any).file, asset.name);
+      if (Platform.OS === 'web' && asset.file) {
+        fd.append('file', asset.file, asset.name || 'receipt.jpg');
       } else {
         fd.append('file', {
           uri: asset.uri,
-          name: asset.name || 'invoice.pdf',
-          type: asset.mimeType || 'application/pdf',
+          name: asset.name || 'receipt.jpg',
+          type: asset.mimeType || 'image/jpeg',
         } as any);
       }
       const data = await apiUpload('/invoices/analyze', fd);
@@ -183,6 +178,29 @@ export default function FinanceScreen() {
       setInvoiceError(e.message || 'تعذر تحليل الفاتورة');
     }
     setAnalyzing(false);
+  };
+
+  const pickInvoice = async () => {
+    setInvoiceError('');
+    const res = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'image/*'],
+      copyToCacheDirectory: true,
+    });
+    if (res.canceled || !res.assets?.length) return;
+    await analyzeInvoiceAsset(res.assets[0] as any);
+  };
+
+  const scanReceipt = async () => {
+    setInvoiceError('');
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('الإذن مطلوب', 'يحتاج التطبيق إذن الكاميرا لمسح الإيصال');
+      return;
+    }
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (res.canceled || !res.assets?.length) return;
+    const a = res.assets[0];
+    await analyzeInvoiceAsset({ uri: a.uri, name: 'receipt.jpg', mimeType: a.mimeType || 'image/jpeg' });
   };
 
   const confirmInvoice = async () => {
@@ -604,6 +622,10 @@ export default function FinanceScreen() {
             <Ionicons name="document-text" size={16} color={C.brand} />
           )}
           <Text style={styles.actionSmText}>{analyzing ? '...' : 'فاتورة'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionSm} onPress={scanReceipt} disabled={analyzing} testID="scan-receipt-btn">
+          <Ionicons name="camera" size={16} color={C.brand} />
+          <Text style={styles.actionSmText}>مسح إيصال</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.addBtn}

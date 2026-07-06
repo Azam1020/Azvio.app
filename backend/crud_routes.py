@@ -917,3 +917,40 @@ async def seed_defaults():
                 "created_at": now_iso(),
             },
         ])
+
+
+# ============ Testimonials (client reviews shown inside the app) ============
+
+class TestimonialCreate(BaseModel):
+    client_name: str
+    rating: int = 5  # 1-5
+    comment: str = ""
+    service_type: str = "drone"
+
+
+@router.get("/testimonials")
+async def list_testimonials():
+    return await db.testimonials.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+
+@router.post("/testimonials")
+async def create_testimonial(body: TestimonialCreate):
+    rating = max(1, min(5, body.rating))
+    doc = {
+        "id": new_id(),
+        "client_name": body.client_name.strip() or "عميل AZVIO",
+        "rating": rating,
+        "comment": body.comment.strip(),
+        "service_type": body.service_type,
+        "created_at": now_iso(),
+    }
+    await db.testimonials.insert_one(dict(doc))
+    return doc
+
+
+@router.delete("/testimonials/{testimonial_id}")
+async def delete_testimonial(testimonial_id: str):
+    r = await db.testimonials.delete_one({"id": testimonial_id})
+    if r.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="التقييم غير موجود")
+    return {"ok": True}

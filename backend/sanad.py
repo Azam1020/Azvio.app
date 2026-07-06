@@ -111,7 +111,20 @@ def today_str():
 
 
 async def build_context() -> str:
-    clients = await db.clients.find({}, {"_id": 0, "name": 1, "status": 1, "service_type": 1, "agreed_price": 1}).sort("created_at", -1).to_list(50)
+    clients = await db.clients.find(
+        {},
+        {
+            "_id": 0,
+            "name": 1,
+            "status": 1,
+            "stage": 1,
+            "service_type": 1,
+            "agreed_price": 1,
+            "drive_link": 1,
+            "notes": 1,
+            "updated_at": 1,
+        },
+    ).sort("created_at", -1).to_list(50)
     txs = await db.transactions.find({}, {"_id": 0}).to_list(5000)
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     total_income = sum(t["amount"] for t in txs if t["type"] == "income")
@@ -129,9 +142,35 @@ async def build_context() -> str:
         f"- ديون لي: {debts_to_me} | ديون عليّ: {debts_i_owe} | اشتراكات شهرية: {subs}",
         f"- عناصر المحتوى: {content_count}",
     ]
+    stage_labels = {"booked": "محجوز", "shooting": "تصوير", "editing": "مونتاج", "review": "مراجعة العميل", "delivered": "تسليم"}
     if clients:
-        names = ", ".join(f"{c['name']} ({'قيد التنفيذ' if c.get('status') == 'in_progress' else 'تم التسليم'})" for c in clients[:10])
-        lines.append(f"- آخر العملاء: {names}")
+        detail_parts = []
+        delayed = []
+        now = datetime.now(timezone.utc)
+        for c in clients[:15]:
+            stage = c.get("stage") or "booked"
+            piece = f"{c['name']} (مرحلة: {stage_labels.get(stage, stage)}"
+            if c.get("drive_link"):
+                piece += ", رابط ملفات متوفر"
+            if c.get("notes"):
+                piece += f", ملاحظات: {c['notes'][:80]}"
+            piece += ")"
+            detail_parts.append(piece)
+            # Stalled-stage detection: not delivered and untouched for 4+ days
+            if stage != "delivered" and c.get("updated_at"):
+                try:
+                    updated = datetime.fromisoformat(c["updated_at"].replace("Z", "+00:00"))
+                    days = (now - updated).days
+                    if days >= 4:
+                        delayed.append(f"{c['name']} (عالق بمرحلة {stage_labels.get(stage, stage)} منذ {days} يوم)")
+                except Exception:
+                    pass
+        lines.append("- تفاصيل العملاء الأخيرة: " + "؛ ".join(detail_parts))
+        if delayed:
+            lines.append(
+                "- ⚠️ مشاريع متأخرة قد تحتاج متابعة: " + "؛ ".join(delayed)
+                + " — إذا سأل المستخدم عن حالة عمله العام أو عن أحد هذي المشاريع، نبّهه لطيف بدون ما يطلب."
+            )
     if events:
         ev = ", ".join(f"{e['title']} ({e['date']})" for e in events)
         lines.append(f"- مواعيد قادمة: {ev}")

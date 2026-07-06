@@ -241,6 +241,7 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>عن التطبيق</Text>
         <View style={styles.card}>
           {[
+            { label: 'شهادات العملاء', href: '/testimonials' },
             { label: 'من نحن', href: '/about' },
             { label: 'سياسة الخصوصية', href: '/privacy-policy' },
             { label: 'شروط الاستخدام', href: '/terms' },
