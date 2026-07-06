@@ -334,3 +334,133 @@ async def suggest_pricing(body: PricingSuggestRequest):
         return json.loads(m.group(0))
     except Exception:
         raise HTTPException(status_code=422, detail="تعذر قراءة السعر المقترح")
+
+
+@router.post("/invoices/auto-generate")
+async def auto_generate_invoice(body: dict, user: dict = Depends(get_current_user)):
+    """توليد الفاتورة تلقائياً من بيانات المشروع."""
+    client_id = body.get("client_id")
+    amount = body.get("amount", 0)
+    notes = body.get("notes", "")
+    
+    if not client_id or not amount:
+        raise HTTPException(status_code=400, detail="client_id و amount مطلوبان")
+    
+    try:
+        # احصل على بيانات العميل
+        client = await db.clients.find_one({"id": client_id, "created_by": user["user_id"]}, {"_id": 0})
+        if not client:
+            raise HTTPException(status_code=404, detail="العميل غير موجود")
+        
+        # توليد رقم الفاتورة
+        from datetime import datetime
+        invoice_num = f"INV-{datetime.now().strftime('%Y%m%d')}-{client_id[:6].upper()}"
+        
+        # إنشاء الفاتورة
+        invoice = {
+            "id": invoice_num,
+            "invoice_number": invoice_num,
+            "user_id": user["user_id"],
+            "client_id": client_id,
+            "client_name": client.get("name"),
+            "client_phone": client.get("phone"),
+            "client_email": client.get("email"),
+            "amount": amount,
+            "status": "pending",  # pending, paid, overdue
+            "service_type": client.get("service_type"),
+            "description": notes or f"فاتورة {client.get('service_type')}",
+            "issued_date": datetime.now().isoformat(),
+            "due_date": (datetime.now() + timedelta(days=7)).isoformat(),  # 7 ايام
+            "payment_link": None,  # سيُملأ من نظام الدفع
+            "payment_status": "not_paid",
+            "created_at": datetime.now().isoformat()
+        }
+        
+        # احفظ الفاتورة
+        await db.invoices.insert_one(invoice)
+        
+        # حدّث حالة العميل
+        await db.clients.update_one(
+            {"id": client_id},
+            {
+                "$set": {
+                    "stage": "delivered",
+                    "invoice_id": invoice_num,
+                    "updated_at": datetime.now().isoformat()
+                }
+            }
+        )
+        
+        # أرسل رسالة للعميل
+        from communication import DEFAULT_TEMPLATES
+        delivery_msg = DEFAULT_TEMPLATES.get("delivery", {}).get("template", "مشروعك جاهز!")
+        
+        return {
+            "success": True,
+            "invoice": invoice,
+            "message": f"✅ تم إنشاء الفاتورة {invoice_num} بنجاح"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/invoices/send-to-client")
+async def send_invoice_to_client(body: dict, user: dict = Depends(get_current_user)):
+    """أرسل الفاتورة للعميل عبر البريد الإلكتروني."""
+    invoice_id = body.get("invoice_id")
+    
+    try:
+        # احصل على الفاتورة
+        invoice = await db.invoices.find_one(
+            {"id": invoice_id, "user_id": user["user_id"]},
+            {"_id": 0}
+        )
+        if not invoice:
+            raise HTTPException(status_code=404, detail="الفاتورة غير موجودة")
+        
+        client_email = invoice.get("client_email")
+        if not client_email:
+            return {
+                "success": False,
+                "message": "لا يوجد بريد إلكتروني للعميل"
+            }
+        
+        # تحضير رسالة البريد
+        invoice_msg = f"""
+السلام عليكم {invoice.get('client_name')}،
+
+فاتورتك جاهزة:
+رقم الفاتورة: {invoice.get('invoice_number')}
+المبلغ: {invoice.get('amount')} ريال
+تاريخ الاستحقاق: {invoice.get('due_date')}
+الخدمة: {invoice.get('description')}
+
+رابط الدفع: [سيتم إضافته من بوابة الدفع]
+
+شكراً لك! 🙏
+AZVIO Team
+"""
+        
+        # هنا يمكن إضافة تكامل مع خدمة البريد (SendGrid, Mailgun, etc)
+        # في الوقت الحالي، نسجل فقط في قاعدة البيانات
+        await db.messages.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["user_id"],
+            "client_id": invoice.get("client_id"),
+            "type": "invoice",
+            "invoice_id": invoice_id,
+            "content": invoice_msg,
+            "sent_to": client_email,
+            "sent_at": datetime.now().isoformat()
+        })
+        
+        return {
+            "success": True,
+            "message": f"✅ تم إرسال الفاتورة إلى {client_email}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+from datetime import timedelta
+import uuid

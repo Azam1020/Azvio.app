@@ -19,6 +19,22 @@ type PortalData = {
   status: string;
   drive_link?: string | null;
   has_signature: boolean;
+  invoice?: {
+    id: string;
+    amount: number;
+    status: string;
+    due_date: string;
+    payment_link: string;
+  };
+  files?: Array<{
+    name: string;
+    download_link: string;
+    type: string;
+  }>;
+  notes?: Array<{
+    text: string;
+    created_at: string;
+  }>;
 };
 
 export default function ClientPortalScreen() {
@@ -116,6 +132,80 @@ export default function ClientPortalScreen() {
         </TouchableOpacity>
       )}
 
+      {/* الفاتورة */}
+      {data.invoice && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>الفاتورة</Text>
+          <View style={styles.invoiceRow}>
+            <View>
+              <Text style={styles.invoiceLabel}>المبلغ</Text>
+              <Text style={styles.invoiceAmount}>{data.invoice.amount} ر.س</Text>
+            </View>
+            <View>
+              <Text style={styles.invoiceLabel}>الحالة</Text>
+              <Text
+                style={[
+                  styles.invoiceStatus,
+                  {
+                    color:
+                      data.invoice.status === 'paid'
+                        ? '#4CAF50'
+                        : data.invoice.status === 'pending'
+                          ? '#FF9800'
+                          : C.error,
+                  },
+                ]}
+              >
+                {data.invoice.status === 'paid' ? '✓ مدفوعة' : data.invoice.status === 'pending' ? '⏱ قيد الانتظار' : '⚠ متأخرة'}
+              </Text>
+            </View>
+          </View>
+          {data.invoice.payment_link && (
+            <TouchableOpacity style={styles.payBtn} onPress={() => Linking.openURL(data.invoice!.payment_link)}>
+              <Ionicons name="card-outline" size={16} color="#FFF" />
+              <Text style={styles.payBtnText}>ادفع الآن</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* الملفات */}
+      {data.files && data.files.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>ملفاتك</Text>
+          {data.files.map((file, idx) => (
+            <TouchableOpacity
+              key={idx}
+              style={styles.fileItem}
+              onPress={() => file.download_link && Linking.openURL(file.download_link)}
+            >
+              <Ionicons name={file.type === 'video' ? 'play-circle-outline' : 'image-outline'} size={18} color={C.brand} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fileName}>{file.name}</Text>
+                <Text style={styles.fileType}>{file.type}</Text>
+              </View>
+              <Ionicons name="download" size={16} color={C.brand} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* آخر التحديثات */}
+      {data.notes && data.notes.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>آخر التحديثات</Text>
+          {data.notes.map((note, idx) => (
+            <View key={idx} style={styles.noteItem}>
+              <View style={styles.noteBullet} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.noteText}>{note.text}</Text>
+                <Text style={styles.noteDate}>{new Date(note.created_at).toLocaleDateString('ar-SA')}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>الموافقة والتوقيع</Text>
         {data.has_signature ? (
@@ -178,6 +268,19 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   linkText: { fontFamily: F.semibold, fontSize: 14, color: C.brandDark, flex: 1, textAlign: 'right' },
+  invoiceRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 16 },
+  invoiceLabel: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'right' },
+  invoiceAmount: { fontFamily: F.bold, fontSize: 18, color: C.brand, textAlign: 'right', marginTop: 4 },
+  invoiceStatus: { fontFamily: F.bold, fontSize: 14, textAlign: 'right', marginTop: 4 },
+  payBtn: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 12 },
+  payBtnText: { fontFamily: F.bold, fontSize: 14, color: '#FFF' },
+  fileItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
+  fileName: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface, textAlign: 'right' },
+  fileType: { fontFamily: F.regular, fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 2 },
+  noteItem: { flexDirection: 'row-reverse', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
+  noteBullet: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.brand, marginTop: 8 },
+  noteText: { fontFamily: F.regular, fontSize: 13, color: C.onSurface, textAlign: 'right' },
+  noteDate: { fontFamily: F.regular, fontSize: 11, color: C.muted, textAlign: 'right', marginTop: 2 },
   signedRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   signedText: { fontFamily: F.semibold, fontSize: 14, color: C.success },
   signBtn: { backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 14, alignItems: 'center' },
