@@ -110,12 +110,40 @@ async def check_budget_alert() -> str | None:
     return f"مصاريف هذا الشهر ({total:,.0f} ر.س) تجاوزت الميزانية المحددة ({budget:,.0f} ر.س)."
 
 
+async def check_payment_due() -> str | None:
+    """التحقق من الفواتير المستحقة."""
+    from datetime import timedelta
+    
+    today = datetime.now(timezone.utc).isoformat()
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    
+    # ابحث عن الفواتير المستحقة غداً أو اليوم
+    due_invoices = await db.invoices.find(
+        {
+            "status": "pending",
+            "due_date": {"$lte": tomorrow, "$gte": today}
+        },
+        {"_id": 0}
+    ).to_list(10)
+    
+    if not due_invoices:
+        return None
+    
+    if len(due_invoices) == 1:
+        inv = due_invoices[0]
+        return f"فاتورة من {inv.get('client_name')} بمبلغ {inv.get('amount')} ريال مستحقة 💳"
+    
+    total = sum(inv.get("amount", 0) for inv in due_invoices)
+    return f"{len(due_invoices)} فواتير مستحقة بإجمالي {total} ريال 💳"
+
+
 async def run_daily_reminders():
     """Called by the scheduler once a day. Sends every user with a
     registered push token a task summary + a motivational line."""
     summary = await build_daily_summary()
     quote = random.choice(MOTIVATIONAL_QUOTES)
     budget_alert = await check_budget_alert()
+    payment_reminder = await check_payment_due()  # تذكير الدفع
     users = await db.users.find({"push_token": {"$exists": True, "$ne": ""}}, {"_id": 0}).to_list(500)
     for u in users:
         prefs = await get_notification_prefs(u["user_id"])
@@ -125,3 +153,5 @@ async def run_daily_reminders():
             await send_expo_push(u["push_token"], "سند", quote)
         if budget_alert and prefs.get("project", True):
             await send_expo_push(u["push_token"], "⚠️ تنبيه الميزانية", budget_alert)
+        if payment_reminder and prefs.get("financial", True):
+            await send_expo_push(u["push_token"], "💳 تذكير الدفع المستحق", payment_reminder)
