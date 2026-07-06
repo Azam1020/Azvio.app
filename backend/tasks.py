@@ -93,6 +93,10 @@ async def create_task(body: TaskCreate, user: dict = Depends(get_current_user)):
     # A regular member can only create tasks for themselves.
     if not _can_manage(user):
         doc["assignee_id"] = user["user_id"]
+    elif not doc.get("assignee_id"):
+        # مدير/مدير مشروع أنشأ مهمة بدون تحديد شخص → تنسند له تلقائياً
+        # (بدل ما تبقى "غير مسندة" وتختفي من شاشة "اليوم" الخاصة به)
+        doc["assignee_id"] = user["user_id"]
     doc.update({
         "id": new_id(),
         "created_by": user["user_id"],
