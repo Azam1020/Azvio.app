@@ -51,9 +51,21 @@ export default function TodayScreen() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', due_date: '', priority: 'normal' as Task['priority'] });
 
+  const [stats, setStats] = useState({ completed: 0, pending: 0, completion_rate: 0 });
+  const [motivation, setMotivation] = useState('');
+
   const load = useCallback(async () => {
     try {
-      setGroups(await api('/tasks/my-today'));
+      // جرب الـ Endpoint المحسّن أولاً
+      try {
+        const enhanced = await api('/tasks/today/enhanced');
+        setGroups(enhanced.sections);
+        setStats(enhanced.stats);
+        setMotivation(enhanced.motivation);
+      } catch {
+        // أسقف للـ Endpoint القديم
+        setGroups(await api('/tasks/my-today'));
+      }
     } catch {}
   }, []);
 
@@ -148,6 +160,55 @@ export default function TodayScreen() {
         contentContainerStyle={styles.wrap}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
       >
+        {/* إحصائيات اليوم + رسالة التحفيز */}
+        {totalCount > 0 && (
+          <View style={styles.statsCard}>
+            {/* شريط التقدم */}
+            <View style={styles.progressSection}>
+              <View style={styles.progressRow}>
+                <Text style={styles.progressLabel}>التقدم</Text>
+                <Text style={styles.progressPercent}>{Math.round(stats.completion_rate)}%</Text>
+              </View>
+              <View style={styles.progressBar}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${Math.max(3, stats.completion_rate)}%`,
+                      backgroundColor:
+                        stats.completion_rate >= 75
+                          ? '#4CAF50'
+                          : stats.completion_rate >= 50
+                            ? '#FF9800'
+                            : stats.completion_rate >= 25
+                              ? '#FFC107'
+                              : C.error,
+                    },
+                  ]}
+                />
+              </View>
+              <View style={styles.statsRow}>
+                <View style={styles.stat}>
+                  <Ionicons name="checkmark-done" size={14} color="#4CAF50" />
+                  <Text style={styles.statText}>{stats.completed} مكتملة</Text>
+                </View>
+                <View style={styles.stat}>
+                  <Ionicons name="time-outline" size={14} color={C.warning} />
+                  <Text style={styles.statText}>{stats.pending} متبقية</Text>
+                </View>
+              </View>
+            </View>
+            
+            {/* رسالة التحفيز من سند */}
+            {motivation && (
+              <View style={styles.motivationBox}>
+                <Ionicons name="sparkles" size={18} color={C.brand} />
+                <Text style={styles.motivationText}>{motivation}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {totalCount === 0 ? (
           <Empty icon="checkmark-done-circle-outline" text="لا مهام عليك اليوم" hint="اضغط + لإضافة مهمة جديدة" />
         ) : (
@@ -232,4 +293,72 @@ const styles = StyleSheet.create({
   },
   metaText: { fontFamily: F.semibold, fontSize: 11, color: C.muted },
   chipsLabel: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, textAlign: 'right', marginBottom: 6 },
+  
+  // الإحصائيات والتحفيز
+  statsCard: {
+    backgroundColor: C.brandSoft,
+    borderRadius: R.lg,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: C.brand + '30',
+  },
+  progressSection: {
+    gap: 10,
+  },
+  progressRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressLabel: {
+    fontFamily: F.semibold,
+    fontSize: 12,
+    color: C.onSurface,
+  },
+  progressPercent: {
+    fontFamily: F.bold,
+    fontSize: 16,
+    color: C.brand,
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: C.surface,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+  },
+  statsRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  stat: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statText: {
+    fontFamily: F.semibold,
+    fontSize: 12,
+    color: C.onSurface,
+  },
+  motivationBox: {
+    backgroundColor: C.surface,
+    borderRadius: R.md,
+    padding: 12,
+    marginTop: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  motivationText: {
+    fontFamily: F.semibold,
+    fontSize: 13,
+    color: C.brand,
+    flex: 1,
+    textAlign: 'right',
+  },
 });

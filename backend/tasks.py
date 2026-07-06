@@ -143,3 +143,171 @@ async def delete_task(task_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="لا تملك صلاحية حذف هذه المهمة")
     await db.tasks.delete_one({"id": task_id})
     return {"ok": True}
+
+
+# ============ الدفعة الأولى: شاشة اليوم + التوزيع الآلي ============
+
+@router.get("/tasks/today/enhanced")
+async def get_enhanced_today(user: dict = Depends(get_current_user)):
+    """شاشة اليوم المحسّنة مع إحصائيات وتحفيز."""
+    today = today_str()
+    
+    # احصل على مهام اليوم والمتأخرة
+    all_tasks = await db.tasks.find({"assignee_id": user["user_id"]}, {"_id": 0}).to_list(1000)
+    
+    overdue = [t for t in all_tasks if t.get("due_date") and t["due_date"] < today and t["status"] != "done"]
+    due_today = [t for t in all_tasks if t.get("due_date") == today and t["status"] != "done"]
+    completed_today = [t for t in all_tasks if t.get("due_date") == today and t["status"] == "done"]
+    
+    # احسب الإحصائيات
+    total_pending = len(overdue) + len(due_today)
+    total_completed = len(completed_today)
+    
+    # احصل على رسالة تحفيزية
+    motivation = _get_daily_motivation(total_completed, total_pending)
+    
+    return {
+        "date": today,
+        "sections": {
+            "overdue": overdue,
+            "due_today": due_today,
+            "completed": completed_today
+        },
+        "stats": {
+            "completed": total_completed,
+            "pending": total_pending,
+            "completion_rate": (total_completed / (total_completed + total_pending) * 100) if (total_completed + total_pending) > 0 else 0
+        },
+        "motivation": motivation
+    }
+
+
+@router.post("/tasks/auto-assign-project")
+async def auto_assign_project_tasks(project_id: str, user: dict = Depends(get_current_user)):
+    """توزيع آلي للمهام على فريق المشروع حسب التخصص والعبء الحالي."""
+    if not _can_manage(user):
+        raise HTTPException(status_code=403, detail="فقط المدير يمكنه توزيع المهام تلقائياً")
+    
+    try:
+        # احصل على المهام غير الموزعة
+        unassigned = await db.tasks.find(
+            {"client_id": project_id, "assignee_id": ""},
+            {"_id": 0}
+        ).to_list(100)
+        
+        if not unassigned:
+            return {"success": True, "assigned_count": 0, "message": "لا توجد مهام غير موزعة"}
+        
+        # احصل على فريقك النشط
+        team = await db.team.find(
+            {"created_by": user["user_id"], "status": "active"},
+            {"_id": 0}
+        ).to_list(50)
+        
+        assigned_count = 0
+        for task in unassigned:
+            # ابحث عن عضو فريق مناسب
+            suitable_member = await _find_best_team_member(task, team, user["user_id"])
+            
+            if suitable_member:
+                await db.tasks.update_one(
+                    {"id": task["id"]},
+                    {"$set": {
+                        "assignee_id": suitable_member["id"],
+                        "updated_at": now_iso()
+                    }}
+                )
+                assigned_count += 1
+        
+        return {
+            "success": True,
+            "assigned_count": assigned_count,
+            "message": f"✅ تم توزيع {assigned_count} مهمة على فريقك"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"خطأ: {str(e)}")
+
+
+async def _find_best_team_member(task: dict, team: list, user_id: str):
+    """اختر أفضل عضو فريق حسب الدور والعبء الحالي."""
+    task_type = task.get("type", "general")
+    
+    # تطابق أنواع المهام مع الأدوار
+    role_mapping = {
+        "photography": "photographer",
+        "shooting": "photographer",
+        "editing": "editor",
+        "montage": "editor",
+        "review": "project_manager",
+        "delivery": "project_manager",
+        "general": "photographer"
+    }
+    
+    required_role = role_mapping.get(task_type, "photographer")
+    
+    # ابحث عن أعضاء بالدور المناسب
+    suitable = [m for m in team if m.get("role") == required_role]
+    
+    if not suitable:
+        # إذا لم يوجد الدور، خذ أي عضو نشط
+        suitable = [m for m in team if m.get("status") == "active"]
+    
+    if not suitable:
+        return None
+    
+    # اختر من بينهم الأقل انشغالاً (بناءً على عدد المهام الحالية)
+    for member in suitable:
+        member_tasks = await db.tasks.count_documents({
+            "assignee_id": member["id"],
+            "status": {"$ne": "done"}
+        })
+        member["current_tasks"] = member_tasks
+    
+    best = min(suitable, key=lambda m: m.get("current_tasks", 0))
+    return best
+
+
+def _get_daily_motivation(completed: int, pending: int) -> str:
+    """توليد رسالة تحفيزية ذكية من سند."""
+    current_hour = datetime.now().hour
+    
+    messages = {
+        "start": [
+            "☀️ صباح الخير! يلا نبدأ اليوم بقوة وطاقة 💪",
+            "🌟 صحيت برا؟ فيك مهام متناظرة اليوم ✨"
+        ],
+        "morning": [
+            "🚀 الصبح أيام وأنت تشتغل تمام! ادِ الوتر 🎯",
+            "🔥 شغلك رائع، استمر بنفس الإيقاع!"
+        ],
+        "progress": [
+            "💯 عالية عالية! أنت تتقدم بشكل ممتاز 🌟",
+            "🎯 استمر، أنت في المسار الصحيح تماماً!"
+        ],
+        "almost_done": [
+            "🏁 قريب القريب! خلاص شوية ونتخلصنا! 💨",
+            "⚡ وكاد! روح الآخر وخلصنا 🎉"
+        ],
+        "done": [
+            "🏆 الف الف مبروك! انتهيت من كل شي اليوم! 👑",
+            "🎊 عاشت الإنجازات! انت النجم اليوم! ⭐"
+        ]
+    }
+    
+    # اختر الفئة بناءً على الإحصائيات
+    if pending == 0 and completed > 0:
+        category = "done"
+    elif completed == 0:
+        category = "start" if current_hour < 10 else "morning"
+    else:
+        completion_rate = completed / (completed + pending) if (completed + pending) > 0 else 0
+        if completion_rate < 0.3:
+            category = "progress"
+        elif completion_rate < 0.8:
+            category = "almost_done"
+        else:
+            category = "done"
+    
+    # اختر رسالة عشوائية من الفئة
+    import random
+    return random.choice(messages.get(category, messages["progress"]))
