@@ -53,6 +53,8 @@ _VISION_TASK_MAP = {
     "vision": (GEMINI_PRO, CLAUDE_SONNET),
     "extract": (GEMINI_PRO, CLAUDE_SONNET),
     "ocr": (GEMINI_PRO, CLAUDE_SONNET),
+    # Claude has no audio understanding, so both primary and fallback stay on Gemini.
+    "voice": (GEMINI_PRO, GEMINI_FLASH),
 }
 
 

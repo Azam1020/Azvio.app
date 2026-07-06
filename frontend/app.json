@@ -12,7 +12,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "co.azvio.app",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "استخدم بصمة الوجه لفتح تطبيق AZVIO بسرعة وأمان"
+        "NSFaceIDUsageDescription": "استخدم بصمة الوجه لفتح تطبيق AZVIO بسرعة وأمان",
+        "NSMicrophoneUsageDescription": "يحتاج سند إذن الميكروفون لتسجيل رسائلك الصوتية والرد عليك"
       }
     },
     "android": {
@@ -50,7 +51,13 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-notifications",
-      "expo-local-authentication"
+      "expo-local-authentication",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "يحتاج سند إذن الميكروفون لتسجيل رسائلك الصوتية والرد عليك"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

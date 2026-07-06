@@ -27,6 +27,17 @@ MIME_MAP = {
     ".txt": "text/plain",
 }
 
+AUDIO_MIME_MAP = {
+    ".m4a": "audio/mp4",
+    ".mp4": "audio/mp4",
+    ".caf": "audio/x-caf",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".webm": "audio/webm",
+    ".aac": "audio/aac",
+    ".3gp": "audio/3gpp",
+}
+
 ACTION_PROTOCOL = """
 ## بروتوكول تنفيذ الأوامر
 عندما يطلب المستخدم صراحةً إضافة أو تعديل بيانات، أدرج في نهاية ردك وسم <action> بصيغة JSON (يمكن إدراج أكثر من وسم):
@@ -423,6 +434,56 @@ async def sanad_chat_file(
 @router.get("/sanad/history")
 async def sanad_history(session_id: str = "default"):
     return await db.chat_messages.find({"session_id": session_id}, {"_id": 0}).sort("created_at", 1).to_list(300)
+
+
+async def _save_audio_upload(file: UploadFile):
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    raw = await file.read()
+    if len(raw) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="التسجيل كبير جداً (الحد الأقصى 15MB)")
+    path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}{ext or '.m4a'}")
+    with open(path, "wb") as f:
+        f.write(raw)
+    mime = AUDIO_MIME_MAP.get(ext, "audio/mp4")
+    return path, mime
+
+
+@router.post("/sanad/voice-message")
+async def sanad_voice_message(
+    audio: UploadFile = File(...),
+    session_id: str = Form("default"),
+):
+    """Voice message from the user: transcribe, then run through the exact
+    same pipeline as a normal text message (so actions/history all match)."""
+    path, mime = await _save_audio_upload(audio)
+    try:
+        transcript = await ask_with_file(
+            system="فرّغ الرسالة الصوتية التالية إلى نص عربي فقط، بدون أي تعليق أو شرح إضافي منك، فقط النص المسموع كما هو.",
+            prompt="",
+            file_path=path,
+            mime=mime,
+            task="voice",
+        )
+    except LLMError as e:
+        raise HTTPException(status_code=500, detail=f"تعذر فهم التسجيل الصوتي: {e}")
+
+    transcript = (transcript or "").strip()
+    if not transcript:
+        raise HTTPException(status_code=422, detail="لم أتمكن من فهم التسجيل، حاول مرة أخرى")
+
+    context = await build_context()
+    hist = await get_history_text(session_id)
+    system = build_system(context)
+    if hist:
+        system += f"\n\n## آخر المحادثة\n{hist}"
+    await store_message(session_id, "user", transcript)
+    try:
+        text = await ask_text(system=system, user=transcript, task="chat")
+    except LLMError as e:
+        raise HTTPException(status_code=500, detail=f"تعذر الاتصال بسند: {e}")
+    clean, actions = await execute_actions(text)
+    await store_message(session_id, "assistant", clean)
+    return {"reply": clean, "transcript": transcript, "actions": actions}
 
 
 @router.delete("/sanad/history")

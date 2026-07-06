@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
+import { AudioModule, RecordingPresets, useAudioRecorder } from 'expo-audio';
 import { api, apiUpload } from '@/src/api';
 import { confirmAsync } from '@/src/ui';
 import { C, F, R, shadow } from '@/src/theme';
@@ -37,6 +39,10 @@ export default function SanadScreen() {
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recTimerRef = useRef<any>(null);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
 
@@ -131,6 +137,60 @@ export default function SanadScreen() {
       setMessages((prev) => [
         ...prev,
         { id: `e-${Date.now()}`, role: 'assistant', content: `⚠️ ${e.message || 'تعذر معالجة الطلب، حاول مجدداً'}` },
+      ]);
+    }
+    setSending(false);
+    scrollDown();
+  };
+
+  const startRecording = async () => {
+    const perm = await AudioModule.requestRecordingPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('الإذن مطلوب', 'يحتاج سند إذن الميكروفون لتسجيل رسالتك الصوتية');
+      return;
+    }
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await recorder.prepareToRecordAsync();
+    recorder.record();
+    setIsRecording(true);
+    setRecSeconds(0);
+    recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000);
+  };
+
+  const stopRecording = async (send: boolean) => {
+    if (!isRecording) return;
+    clearInterval(recTimerRef.current);
+    setIsRecording(false);
+    await recorder.stop();
+    const uri = recorder.uri;
+    if (!send || !uri) return;
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await sendVoiceMessage(uri);
+  };
+
+  const sendVoiceMessage = async (uri: string) => {
+    const tempId = `u-${Date.now()}`;
+    setMessages((prev) => [...prev, { id: tempId, role: 'user', content: '🎤 رسالة صوتية...' }]);
+    setSending(true);
+    scrollDown();
+    try {
+      const fd = new FormData();
+      fd.append('audio', { uri, name: 'voice.m4a', type: 'audio/mp4' } as any);
+      fd.append('session_id', 'default');
+      const data = await apiUpload('/sanad/voice-message', fd);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, content: `🎤 ${data.transcript}` } : m))
+      );
+      const replyId = `a-${Date.now()}`;
+      setMessages((prev) => [...prev, { id: replyId, role: 'assistant', content: data.reply }]);
+      if (autoSpeak) speak(replyId, data.reply);
+    } catch (e: any) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, content: '🎤 رسالة صوتية' } : m))
+      );
+      setMessages((prev) => [
+        ...prev,
+        { id: `e-${Date.now()}`, role: 'assistant', content: `⚠️ ${e.message || 'تعذر فهم التسجيل، حاول مجدداً'}` },
       ]);
     }
     setSending(false);
@@ -283,6 +343,17 @@ export default function SanadScreen() {
         </View>
       )}
 
+      {/* Recording indicator */}
+      {isRecording && (
+        <View style={styles.recordingBar}>
+          <View style={styles.recDot} />
+          <Text style={styles.recText}>
+            جاري التسجيل... {Math.floor(recSeconds / 60)}:{String(recSeconds % 60).padStart(2, '0')}
+          </Text>
+          <Text style={styles.recHint}>ارفع إصبعك للإرسال، اسحب لأعلى للإلغاء</Text>
+        </View>
+      )}
+
       {/* Input bar */}
       <View style={[styles.inputBar, { paddingBottom: keyboardVisible ? 8 : insets.bottom + 8 }]}>
         <TouchableOpacity style={styles.attachBtn} onPress={pickFile} testID="attach-btn">
@@ -297,14 +368,25 @@ export default function SanadScreen() {
           multiline
           testID="sanad-input"
         />
-        <TouchableOpacity
-          style={[styles.sendBtn, !(input.trim() || attachments.length > 0) && { opacity: 0.4 }]}
-          onPress={() => send()}
-          disabled={sending || !(input.trim() || attachments.length > 0)}
-          testID="send-btn"
-        >
-          <Ionicons name="send" size={18} color="#FFF" style={{ transform: [{ scaleX: -1 }] }} />
-        </TouchableOpacity>
+        {!input.trim() && attachments.length === 0 ? (
+          <TouchableOpacity
+            style={[styles.sendBtn, isRecording && { backgroundColor: C.error }]}
+            onPressIn={startRecording}
+            onPressOut={() => stopRecording(true)}
+            testID="mic-btn"
+          >
+            <Ionicons name="mic" size={20} color="#FFF" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.sendBtn, !(input.trim() || attachments.length > 0) && { opacity: 0.4 }]}
+            onPress={() => send()}
+            disabled={sending || !(input.trim() || attachments.length > 0)}
+            testID="send-btn"
+          >
+            <Ionicons name="send" size={18} color="#FFF" style={{ transform: [{ scaleX: -1 }] }} />
+          </TouchableOpacity>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -400,6 +482,21 @@ const styles = StyleSheet.create({
     borderTopColor: C.border,
   },
   attachBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  recordingBar: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: C.surface,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: R.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    ...shadow,
+  },
+  recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.error },
+  recText: { fontFamily: F.bold, fontSize: 13, color: C.onSurface },
+  recHint: { flex: 1, fontFamily: F.regular, fontSize: 11, color: C.muted, textAlign: 'left' },
   input: {
     flex: 1,
     backgroundColor: C.surface2,
