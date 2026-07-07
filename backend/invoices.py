@@ -285,6 +285,10 @@ class PricingSuggestRequest(BaseModel):
     shooting_days: float = 0
     editing_minutes: float = 0
     effects_level: str = "basic"  # basic | medium | advanced
+    hours: float = 0  # ساعات العمل الفعلية (تصوير/مونتاج/أي خدمة)
+    equipment_cost: float = 0  # تكلفة معدات/أغراض المشروع
+    logistics_cost: float = 0  # رسوم لوجستية (تنقل، شحن، إلخ)
+    admin_fees: float = 0  # رسوم إدارية/تصاريح
     notes: str = ""
 
 
@@ -300,19 +304,28 @@ async def suggest_pricing(body: PricingSuggestRequest):
         for p in my_prices
     ) or "لا توجد أسعار مرجعية محفوظة بعد."
 
-    prompt = f"""بناءً على أسعاري المرجعية الخاصة التالية:
+    direct_costs = body.equipment_cost + body.logistics_cost + body.admin_fees
+
+    prompt = f"""بناءً على أسعاري المرجعية الخاصة التالية (هذي "تسعيرتي" — اعتبرها المصدر الأساسي والأهم لتحديد السعر، ولا تتجاهلها لصالح متوسط السوق العام):
 {price_lines}
 
 اقترح سعرًا عادلًا لمشروع جديد بالتفاصيل التالية:
 - نوع الخدمة: {body.service_type}
 - الفئة الفرعية: {body.sub_category or 'غير محدد'}
 - أيام التصوير: {body.shooting_days}
+- ساعات العمل الفعلية: {body.hours}
 - دقائق المونتاج: {body.editing_minutes}
 - مستوى المؤثرات المطلوبة: {body.effects_level}
+- تكلفة المعدات/الأغراض: {body.equipment_cost} ر.س
+- الرسوم اللوجستية (تنقل/شحن): {body.logistics_cost} ر.س
+- الرسوم الإدارية/التصاريح: {body.admin_fees} ر.س
+- إجمالي التكاليف المباشرة المذكورة أعلاه: {direct_costs} ر.س (لازم السعر المقترح يغطيها + هامش ربح، مو أقل منها)
 - ملاحظات إضافية: {body.notes or 'لا توجد'}
 
+اعتمد بالدرجة الأولى على "تسعيرتي" أعلاه إذا كانت متوفرة لنفس نوع الخدمة، واستخدم متوسط سعر السوق السعودي فقط كمرجع ثانوي لو تسعيرتي غير كافية أو غير موجودة.
+
 أجب بصيغة JSON فقط بدون أي نص إضافي:
-{{"suggested_price": 0, "price_range_low": 0, "price_range_high": 0, "reasoning": "شرح مختصر بالعربية لسبب هذا السعر"}}"""
+{{"suggested_price": 0, "price_range_low": 0, "price_range_high": 0, "market_price_low": 0, "market_price_high": 0, "based_on": "my_pricing أو market", "reasoning": "شرح مختصر بالعربية لسبب هذا السعر ومصدره"}}"""
 
     try:
         text = await ask_text(

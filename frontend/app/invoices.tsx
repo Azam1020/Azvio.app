@@ -59,7 +59,16 @@ export default function InvoicesScreen() {
   // AI pricing helper
   const [pricingOpen, setPricingOpen] = useState(false);
   const [pricingLoading, setPricingLoading] = useState(false);
-  const [pricingForm, setPricingForm] = useState({ shooting_days: '', editing_minutes: '', effects_level: 'basic' });
+  const [pricingForm, setPricingForm] = useState({
+    shooting_days: '',
+    editing_minutes: '',
+    effects_level: 'basic',
+    hours: '',
+    equipment_cost: '',
+    logistics_cost: '',
+    admin_fees: '',
+    notes: '',
+  });
   const [pricingResult, setPricingResult] = useState<any>(null);
 
   const load = useCallback(async () => {
@@ -105,9 +114,30 @@ export default function InvoicesScreen() {
           shooting_days: parseFloat(pricingForm.shooting_days) || 0,
           editing_minutes: parseFloat(pricingForm.editing_minutes) || 0,
           effects_level: pricingForm.effects_level,
+          hours: parseFloat(pricingForm.hours) || 0,
+          equipment_cost: parseFloat(pricingForm.equipment_cost) || 0,
+          logistics_cost: parseFloat(pricingForm.logistics_cost) || 0,
+          admin_fees: parseFloat(pricingForm.admin_fees) || 0,
+          notes: pricingForm.notes,
         }),
       });
       setPricingResult(res);
+      // اكتب التفاصيل اللي دخّلتها بخانة ملاحظات الفاتورة تلقائياً (طلب: "يكتب التفاصيل بالملاحظات")
+      const detailLines = [
+        pricingForm.hours && `ساعات العمل: ${pricingForm.hours}`,
+        pricingForm.shooting_days && `أيام التصوير: ${pricingForm.shooting_days}`,
+        pricingForm.editing_minutes && `دقائق المونتاج: ${pricingForm.editing_minutes}`,
+        pricingForm.equipment_cost && `تكلفة المعدات: ${pricingForm.equipment_cost} ر.س`,
+        pricingForm.logistics_cost && `رسوم لوجستية: ${pricingForm.logistics_cost} ر.س`,
+        pricingForm.admin_fees && `رسوم إدارية: ${pricingForm.admin_fees} ر.س`,
+        pricingForm.notes && `ملاحظات: ${pricingForm.notes}`,
+      ].filter(Boolean);
+      if (detailLines.length) {
+        setForm((f: any) => ({
+          ...f,
+          notes: f.notes ? `${f.notes}\n${detailLines.join(' · ')}` : detailLines.join(' · '),
+        }));
+      }
     } catch (e: any) {
       Alert.alert('تعذّر الحساب', e?.message || 'حدث خطأ');
     }
@@ -306,6 +336,12 @@ export default function InvoicesScreen() {
         {pricingOpen && (
           <View style={styles.pricingInline}>
             <Field
+              label="ساعات العمل الفعلية"
+              value={pricingForm.hours}
+              onChangeText={(v) => setPricingForm({ ...pricingForm, hours: v })}
+              keyboardType="numeric"
+            />
+            <Field
               label="أيام التصوير"
               value={pricingForm.shooting_days}
               onChangeText={(v) => setPricingForm({ ...pricingForm, shooting_days: v })}
@@ -327,6 +363,31 @@ export default function InvoicesScreen() {
               value={pricingForm.effects_level}
               onChange={(v) => setPricingForm({ ...pricingForm, effects_level: v })}
             />
+            <Field
+              label="تكلفة المعدات/الأغراض (ر.س)"
+              value={pricingForm.equipment_cost}
+              onChangeText={(v) => setPricingForm({ ...pricingForm, equipment_cost: v })}
+              keyboardType="numeric"
+            />
+            <Field
+              label="رسوم لوجستية — تنقل/شحن (ر.س)"
+              value={pricingForm.logistics_cost}
+              onChangeText={(v) => setPricingForm({ ...pricingForm, logistics_cost: v })}
+              keyboardType="numeric"
+            />
+            <Field
+              label="رسوم إدارية/تصاريح (ر.س)"
+              value={pricingForm.admin_fees}
+              onChangeText={(v) => setPricingForm({ ...pricingForm, admin_fees: v })}
+              keyboardType="numeric"
+            />
+            <Field
+              label="ملاحظات إضافية (اختياري)"
+              value={pricingForm.notes}
+              onChangeText={(v) => setPricingForm({ ...pricingForm, notes: v })}
+              multiline
+              placeholder="أي تفاصيل خاصة بهذا المشروع"
+            />
             <TouchableOpacity style={styles.calcBtn} onPress={runPricingSuggestion} disabled={pricingLoading}>
               <Text style={styles.calcBtnText}>{pricingLoading ? 'جارٍ الحساب...' : 'احسب السعر المقترح'}</Text>
             </TouchableOpacity>
@@ -335,8 +396,18 @@ export default function InvoicesScreen() {
               <View style={styles.resultCard}>
                 <Text style={styles.resultPrice}>{fmt(pricingResult.suggested_price)} ر.س</Text>
                 <Text style={styles.resultRange}>
-                  النطاق: {fmt(pricingResult.price_range_low)} - {fmt(pricingResult.price_range_high)} ر.س
+                  نطاق تسعيرتي: {fmt(pricingResult.price_range_low)} - {fmt(pricingResult.price_range_high)} ر.س
                 </Text>
+                {!!(pricingResult.market_price_low || pricingResult.market_price_high) && (
+                  <Text style={styles.resultRange}>
+                    نطاق السوق: {fmt(pricingResult.market_price_low)} - {fmt(pricingResult.market_price_high)} ر.س
+                  </Text>
+                )}
+                {!!pricingResult.based_on && (
+                  <Text style={styles.resultSource}>
+                    {pricingResult.based_on === 'my_pricing' ? '📊 معتمد على تسعيرتي الخاصة' : '🌍 معتمد على متوسط السوق'}
+                  </Text>
+                )}
                 <Text style={styles.resultReason}>{pricingResult.reasoning}</Text>
                 <TouchableOpacity style={styles.useBtn} onPress={useSuggestedPrice}>
                   <Text style={styles.useBtnText}>استخدم هذا السعر كبند</Text>
@@ -503,6 +574,7 @@ const styles = StyleSheet.create({
   resultPrice: { fontFamily: F.bold, fontSize: 22, color: C.brand, textAlign: 'center' },
   resultRange: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'center', marginTop: 4 },
   resultReason: { fontFamily: F.regular, fontSize: 13, color: C.onSurface2, textAlign: 'right', marginTop: 10, lineHeight: 20 },
+  resultSource: { fontFamily: F.semibold, fontSize: 11, color: C.brand, textAlign: 'right', marginTop: 6 },
   useBtn: { backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 10, alignItems: 'center', marginTop: 12 },
   useBtnText: { fontFamily: F.bold, fontSize: 13, color: '#FFF' },
 });
