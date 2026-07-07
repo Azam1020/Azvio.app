@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { api } from '@/src/api';
 import { useAuth } from '@/src/AuthContext';
 import { AppModal, Chips, Empty, Field, ScreenHeader } from '@/src/ui';
+import { DateField } from '@/src/DateTimePicker';
 import { C, F, R, shadow } from '@/src/theme';
 
 type Task = {
@@ -255,12 +256,7 @@ export default function TodayScreen() {
           onChangeText={(v) => setForm({ ...form, description: v })}
           multiline
         />
-        <Field
-          label="تاريخ الاستحقاق (YYYY-MM-DD)"
-          value={form.due_date}
-          onChangeText={(v) => setForm({ ...form, due_date: v })}
-          placeholder="2026-07-10"
-        />
+        <DateField label="تاريخ الاستحقاق" value={form.due_date} onChange={(v) => setForm({ ...form, due_date: v })} />
         <Text style={styles.chipsLabel}>الأولوية</Text>
         <Chips
           options={[
