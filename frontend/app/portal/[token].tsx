@@ -220,7 +220,7 @@ export default function ClientPortalScreen() {
         )}
       </View>
 
-      <AppModal visible={signModal} title="التوقيع" onClose={() => setSignModal(false)}>
+      <AppModal visible={signModal} title="التوقيع" onClose={() => setSignModal(false)} scrollEnabled={false}>
         <SignaturePad onSave={submitSignature} onCancel={() => setSignModal(false)} />
         {signing && <ActivityIndicator color={C.brand} style={{ marginTop: 12 }} />}
       </AppModal>

@@ -423,7 +423,7 @@ export default function ClientDetail() {
         <Field label="ملاحظات" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} multiline />
       </AppModal>
 
-      <AppModal visible={signModal} title="توقيع موافقة العميل" onClose={() => setSignModal(false)}>
+      <AppModal visible={signModal} title="توقيع موافقة العميل" onClose={() => setSignModal(false)} scrollEnabled={false}>
         <SignaturePad onSave={saveSignature} onCancel={() => setSignModal(false)} />
       </AppModal>
     </View>

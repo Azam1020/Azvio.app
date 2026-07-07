@@ -145,6 +145,7 @@ export function AppModal({
   saveLabel = 'حفظ',
   saving,
   children,
+  scrollEnabled = true,
 }: {
   visible: boolean;
   title: string;
@@ -153,6 +154,7 @@ export function AppModal({
   saveLabel?: string;
   saving?: boolean;
   children: React.ReactNode;
+  scrollEnabled?: boolean; // عطّلها للمحتوى اللي فيه إيماءة سحب خاصة به (زي لوحة التوقيع) عشان لا يتنافس مع تمرير المودال
 }) {
   const insets = useSafeAreaInsets();
   return (
@@ -171,7 +173,7 @@ export function AppModal({
             <Text style={ms.title}>{title}</Text>
             <View style={{ width: 24 }} />
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 440 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 440 }} scrollEnabled={scrollEnabled}>
             {children}
           </ScrollView>
           {onSave && (
