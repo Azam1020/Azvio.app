@@ -25,8 +25,8 @@ export default function GoogleAccountsScreen() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [calendars, setCalendars] = useState<any[]>([]);
   const [tasklists, setTasklists] = useState<any[]>([]);
-  const [selectedCalendar, setSelectedCalendar] = useState('');
-  const [selectedTasklist, setSelectedTasklist] = useState('');
+  const [selectedCalendars, setSelectedCalendars] = useState<string[]>([]);
+  const [selectedTasklists, setSelectedTasklists] = useState<string[]>([]);
   const [loadingPicker, setLoadingPicker] = useState(false);
 
   const load = useCallback(async () => {
@@ -97,20 +97,24 @@ export default function GoogleAccountsScreen() {
       ]);
       if (calRes) {
         setCalendars(calRes.calendars || []);
-        setSelectedCalendar(calRes.selected_calendar_id || 'primary');
+        setSelectedCalendars(calRes.selected_calendar_ids || ['primary']);
       }
       if (taskRes) {
         setTasklists(taskRes.lists || []);
-        setSelectedTasklist(taskRes.selected_tasklist_id || '@default');
+        setSelectedTasklists(taskRes.selected_tasklist_ids || ['@default']);
       }
     } catch {}
     setLoadingPicker(false);
   };
 
-  const pickCalendar = async (email: string, calendarId: string) => {
-    setSelectedCalendar(calendarId);
+  const toggleCalendar = async (email: string, calendarId: string) => {
+    const next = selectedCalendars.includes(calendarId)
+      ? selectedCalendars.filter((c) => c !== calendarId)
+      : [...selectedCalendars, calendarId];
+    if (next.length === 0) return; // لازم تقويم واحد على الأقل يفضل مختار
+    setSelectedCalendars(next);
     try {
-      await api(`/calendar/select?account=${encodeURIComponent(email)}&calendar_id=${encodeURIComponent(calendarId)}`, {
+      await api(`/calendar/select?account=${encodeURIComponent(email)}&calendar_ids=${encodeURIComponent(next.join(','))}`, {
         method: 'POST',
       });
     } catch (e: any) {
@@ -118,10 +122,14 @@ export default function GoogleAccountsScreen() {
     }
   };
 
-  const pickTasklist = async (email: string, tasklistId: string) => {
-    setSelectedTasklist(tasklistId);
+  const toggleTasklist = async (email: string, tasklistId: string) => {
+    const next = selectedTasklists.includes(tasklistId)
+      ? selectedTasklists.filter((t) => t !== tasklistId)
+      : [...selectedTasklists, tasklistId];
+    if (next.length === 0) return;
+    setSelectedTasklists(next);
     try {
-      await api(`/gtasks/select?account=${encodeURIComponent(email)}&tasklist_id=${encodeURIComponent(tasklistId)}`, {
+      await api(`/gtasks/select?account=${encodeURIComponent(email)}&tasklist_ids=${encodeURIComponent(next.join(','))}`, {
         method: 'POST',
       });
     } catch (e: any) {
@@ -223,7 +231,7 @@ export default function GoogleAccountsScreen() {
                       <ActivityIndicator color={C.brand} style={{ marginVertical: 12 }} />
                     ) : (
                       <>
-                        <Text style={styles.permLabel}>📅 التقويم المستخدم بالتطبيق</Text>
+                        <Text style={styles.permLabel}>📅 التقاويم المستخدمة بالتطبيق (تقدر تختار أكثر من وحد)</Text>
                         {calendars.length === 0 ? (
                           <Text style={styles.permEmpty}>تعذر جلب التقاويم (تأكد Calendar API مفعّلة)</Text>
                         ) : (
@@ -231,10 +239,10 @@ export default function GoogleAccountsScreen() {
                             <TouchableOpacity
                               key={c.id}
                               style={styles.permOption}
-                              onPress={() => pickCalendar(a.email, c.id)}
+                              onPress={() => toggleCalendar(a.email, c.id)}
                             >
                               <Ionicons
-                                name={selectedCalendar === c.id ? 'radio-button-on' : 'radio-button-off'}
+                                name={selectedCalendars.includes(c.id) ? 'checkbox' : 'square-outline'}
                                 size={18}
                                 color={C.brand}
                               />
@@ -245,7 +253,7 @@ export default function GoogleAccountsScreen() {
                           ))
                         )}
 
-                        <Text style={[styles.permLabel, { marginTop: 14 }]}>✅ قائمة المهام المستخدمة بالتطبيق</Text>
+                        <Text style={[styles.permLabel, { marginTop: 14 }]}>✅ قوائم المهام المستخدمة بالتطبيق (تقدر تختار أكثر من وحدة)</Text>
                         {tasklists.length === 0 ? (
                           <Text style={styles.permEmpty}>تعذر جلب قوائم المهام (تأكد Google Tasks API مفعّلة وأعدت تسجيل الدخول)</Text>
                         ) : (
@@ -253,10 +261,10 @@ export default function GoogleAccountsScreen() {
                             <TouchableOpacity
                               key={t.id}
                               style={styles.permOption}
-                              onPress={() => pickTasklist(a.email, t.id)}
+                              onPress={() => toggleTasklist(a.email, t.id)}
                             >
                               <Ionicons
-                                name={selectedTasklist === t.id ? 'radio-button-on' : 'radio-button-off'}
+                                name={selectedTasklists.includes(t.id) ? 'checkbox' : 'square-outline'}
                                 size={18}
                                 color={C.brand}
                               />

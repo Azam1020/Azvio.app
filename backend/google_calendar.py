@@ -233,6 +233,7 @@ class EventCreate(BaseModel):
     end: str
     all_day: bool = False
     timezone: str = "Asia/Riyadh"
+    calendar_id: str = ""  # فاضي = أول تقويم مختار افتراضياً؛ حدده صراحة لو عندك أكثر من تقويم مختار
 
 
 class EventUpdate(BaseModel):
@@ -244,6 +245,7 @@ class EventUpdate(BaseModel):
     end: Optional[str] = None
     all_day: Optional[bool] = None
     timezone: Optional[str] = None
+    calendar_id: str = ""  # التقويم اللي فيه الحدث أصلاً (مهم لو مختار أكثر من تقويم)
 
 
 def _build_event_body(summary: str, description: str, start: str, end: str, all_day: bool, tz: str) -> dict:
@@ -322,25 +324,38 @@ def _sync_calendar_list_calendars(access_token: str) -> list:
     ]
 
 
-async def _get_selected_calendar_id(user_id: str, account_email: str = "") -> str:
-    """التقويم المختار من المستخدم، أو 'primary' إذا ما اختار شي بعد."""
+async def _get_selected_calendar_ids(user_id: str, account_email: str = "") -> list:
+    """قائمة التقاويم المختارة من المستخدم — يدعم أكثر من تقويم بنفس الوقت.
+    يرجع ['primary'] إذا ما اختار المستخدم شي بعد (توافق مع الحسابات القديمة)."""
     doc = await db.google_accounts.find_one(
         {"user_id": user_id} | ({"email": account_email} if account_email else {}),
-        {"_id": 0, "selected_calendar_id": 1},
+        {"_id": 0, "selected_calendar_ids": 1, "selected_calendar_id": 1},
     )
-    return (doc or {}).get("selected_calendar_id") or "primary"
+    doc = doc or {}
+    ids = doc.get("selected_calendar_ids")
+    if ids:
+        return ids
+    # توافق مع النظام القديم (اختيار وحد قبل هذا التحديث)
+    old_single = doc.get("selected_calendar_id")
+    return [old_single] if old_single else ["primary"]
 
 
 @router.post("/calendar/events", dependencies=[Depends(get_current_user)])
 async def create_calendar_event(body: EventCreate, current_user=Depends(get_current_user)):
     access_token, _ = await _get_valid_credentials(current_user["user_id"], body.account_email)
-    calendar_id = await _get_selected_calendar_id(current_user["user_id"], body.account_email)
+    calendar_ids = await _get_selected_calendar_ids(current_user["user_id"], body.account_email)
+    target_calendar = body.calendar_id or calendar_ids[0]  # افتراضياً أول تقويم مختار، أو تقويم محدد صراحة
     ev_body = _build_event_body(body.summary, body.description, body.start, body.end, body.all_day, body.timezone)
     try:
-        event = await run_in_threadpool(_sync_calendar_insert, access_token, ev_body, calendar_id)
+        event = await run_in_threadpool(_sync_calendar_insert, access_token, ev_body, target_calendar)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"فشل إنشاء الحدث: {e}")
-    return {"google_event_id": event.get("id"), "html_link": event.get("htmlLink"), "account": body.account_email}
+    return {
+        "google_event_id": event.get("id"),
+        "html_link": event.get("htmlLink"),
+        "account": body.account_email,
+        "calendar_id": target_calendar,
+    }
 
 
 @router.get("/calendar/events", dependencies=[Depends(get_current_user)])
@@ -350,18 +365,31 @@ async def list_calendar_events(
     current_user=Depends(get_current_user),
 ):
     access_token, _ = await _get_valid_credentials(current_user["user_id"], account)
-    calendar_id = await _get_selected_calendar_id(current_user["user_id"], account)
-    try:
-        items = await run_in_threadpool(_sync_calendar_list, access_token, days_ahead, calendar_id)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"فشل جلب المواعيد: {e}")
-    return {"events": items, "account": account, "count": len(items)}
+    calendar_ids = await _get_selected_calendar_ids(current_user["user_id"], account)
+    all_items = []
+    errors = []
+    # نجمع الأحداث من كل التقاويم المختارة مع بعض بقائمة واحدة، كل حدث نحط فيه أي تقويم طلع منه
+    for cal_id in calendar_ids:
+        try:
+            items = await run_in_threadpool(_sync_calendar_list, access_token, days_ahead, cal_id)
+            for it in items:
+                it["_azvio_calendar_id"] = cal_id
+            all_items.extend(items)
+        except Exception as e:
+            errors.append(f"{cal_id}: {e}")
+    if not all_items and errors:
+        raise HTTPException(status_code=400, detail=f"فشل جلب المواعيد: {'; '.join(errors)}")
+    all_items.sort(key=lambda x: x.get("start", {}).get("dateTime") or x.get("start", {}).get("date") or "")
+    return {"events": all_items, "account": account, "count": len(all_items)}
 
 
 @router.put("/calendar/events", dependencies=[Depends(get_current_user)])
 async def update_calendar_event(body: EventUpdate, current_user=Depends(get_current_user)):
     access_token, _ = await _get_valid_credentials(current_user["user_id"], body.account_email)
-    calendar_id = await _get_selected_calendar_id(current_user["user_id"], body.account_email)
+    # لو الفرونت اند بعت لنا أي تقويم كان فيه الحدث أصلاً (من _azvio_calendar_id) نستخدمه بالضبط،
+    # وإلا نرجع لأول تقويم مختار كافتراضي احتياطي.
+    calendar_ids = await _get_selected_calendar_ids(current_user["user_id"], body.account_email)
+    target_calendar = body.calendar_id or calendar_ids[0]
     patch: dict = {}
     if body.summary is not None:
         patch["summary"] = body.summary
@@ -376,7 +404,7 @@ async def update_calendar_event(body: EventUpdate, current_user=Depends(get_curr
             patch["start"] = {"dateTime": body.start, "timeZone": tz}
             patch["end"] = {"dateTime": body.end, "timeZone": tz}
     try:
-        updated = await run_in_threadpool(_sync_calendar_update, access_token, body.google_event_id, patch, calendar_id)
+        updated = await run_in_threadpool(_sync_calendar_update, access_token, body.google_event_id, patch, target_calendar)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"فشل التحديث: {e}")
     return {"google_event_id": updated.get("id"), "account": body.account_email}
@@ -386,12 +414,14 @@ async def update_calendar_event(body: EventUpdate, current_user=Depends(get_curr
 async def delete_calendar_event(
     event_id: str,
     account: str = Query(...),
+    calendar_id: str = Query(""),
     current_user=Depends(get_current_user),
 ):
     access_token, _ = await _get_valid_credentials(current_user["user_id"], account)
-    calendar_id = await _get_selected_calendar_id(current_user["user_id"], account)
+    calendar_ids = await _get_selected_calendar_ids(current_user["user_id"], account)
+    target_calendar = calendar_id or calendar_ids[0]
     try:
-        await run_in_threadpool(_sync_calendar_delete, access_token, event_id, calendar_id)
+        await run_in_threadpool(_sync_calendar_delete, access_token, event_id, target_calendar)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"فشل الحذف: {e}")
     return {"ok": True, "event_id": event_id}
@@ -399,30 +429,33 @@ async def delete_calendar_event(
 
 @router.get("/calendar/list", dependencies=[Depends(get_current_user)])
 async def list_calendars(account: str = Query(...), current_user=Depends(get_current_user)):
-    """كل التقاويم المتاحة بحساب Google — تُعرض للمستخدم يختار منها (طلب: صلاحية اختيار التقويم)."""
+    """كل التقاويم المتاحة بحساب Google — تُعرض للمستخدم يختار منها (يدعم اختيار أكثر من تقويم)."""
     access_token, _ = await _get_valid_credentials(current_user["user_id"], account)
     try:
         calendars = await run_in_threadpool(_sync_calendar_list_calendars, access_token)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"فشل جلب قائمة التقاويم: {e}")
-    selected = await _get_selected_calendar_id(current_user["user_id"], account)
-    return {"calendars": calendars, "selected_calendar_id": selected}
+    selected = await _get_selected_calendar_ids(current_user["user_id"], account)
+    return {"calendars": calendars, "selected_calendar_ids": selected}
 
 
 @router.post("/calendar/select", dependencies=[Depends(get_current_user)])
 async def select_calendar(
     account: str = Query(...),
-    calendar_id: str = Query(...),
+    calendar_ids: str = Query(..., description="قائمة معرّفات تقاويم مفصولة بفاصلة"),
     current_user=Depends(get_current_user),
 ):
-    """يحفظ اختيار المستخدم لأي تقويم يشتغل عليه التطبيق."""
+    """يحفظ اختيار المستخدم لأي تقاويم (واحد أو أكثر) يشتغل عليها التطبيق."""
+    ids_list = [c.strip() for c in calendar_ids.split(",") if c.strip()]
+    if not ids_list:
+        raise HTTPException(status_code=400, detail="لازم تختار تقويم واحد على الأقل")
     result = await db.google_accounts.update_one(
         {"user_id": current_user["user_id"], "email": account},
-        {"$set": {"selected_calendar_id": calendar_id}},
+        {"$set": {"selected_calendar_ids": ids_list}},
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="الحساب غير موجود")
-    return {"ok": True, "selected_calendar_id": calendar_id}
+    return {"ok": True, "selected_calendar_ids": ids_list}
 
 
 @router.get("/status", dependencies=[Depends(get_current_user)])

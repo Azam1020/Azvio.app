@@ -94,11 +94,12 @@ async def _try_sync_task_to_google(user_id: str, task_doc: dict) -> dict:
         if not account:
             return {}
         from google_calendar import _get_valid_credentials
-        from google_tasks import _get_selected_tasklist_id, _sync_insert_task
+        from google_tasks import _get_selected_tasklist_ids, _sync_insert_task
         from fastapi.concurrency import run_in_threadpool
 
         access_token, _ = await _get_valid_credentials(user_id, account["email"])
-        tasklist_id = await _get_selected_tasklist_id(user_id, account["email"])
+        tasklist_ids = await _get_selected_tasklist_ids(user_id, account["email"])
+        tasklist_id = tasklist_ids[0]  # مهام مُنشأة من التطبيق تروح لأول قائمة مختارة افتراضياً
         body = {"title": task_doc.get("title", ""), "notes": task_doc.get("description", "")}
         if task_doc.get("due_date"):
             body["due"] = f"{task_doc['due_date']}T00:00:00.000Z"
