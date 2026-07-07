@@ -7,6 +7,7 @@ import * as Sharing from 'expo-sharing';
 import { api, getToken } from '@/src/api';
 import { AppModal, Chips, Empty, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
+import { ServiceTypeChips } from '@/src/ServiceTypeChips';
 
 const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
@@ -271,14 +272,10 @@ export default function InvoicesScreen() {
       >
         <Field label="اسم العميل" value={form.client_name} onChangeText={(v) => setForm({ ...form, client_name: v })} />
         <Text style={styles.chipsLabel}>نوع الخدمة</Text>
-        <Chips
-          options={[
-            { key: 'drone', label: 'درون' },
-            { key: 'editing', label: 'مونتاج' },
-            { key: 'both', label: 'الاثنين' },
-          ]}
+        <ServiceTypeChips
           value={form.service_type}
           onChange={(v) => setForm({ ...form, service_type: v })}
+          includeBoth
         />
 
         <Field
