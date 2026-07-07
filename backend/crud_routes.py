@@ -84,6 +84,27 @@ async def create_client(body: ClientCreate):
     return doc
 
 
+@router.get("/clients/{client_id}/whatsapp-history")
+async def get_client_whatsapp_history(client_id: str, user: dict = Depends(get_current_user)):
+    """كل تحاليل واتساب المرتبطة بهذا العميل — سواء طُبّقت يدوياً، أو تطابقت بالجوال/الاسم تلقائياً
+    (حتى لو قديمة من قبل ما نضيف هذا الربط). يُستخدم بسجل نشاط العميل (طلب #7)."""
+    client = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=404, detail="العميل غير موجود")
+
+    or_conditions = [{"applied_to_client": client_id}]
+    if client.get("phone"):
+        or_conditions.append({"analysis.client.phone": client["phone"]})
+    if client.get("name"):
+        or_conditions.append({"analysis.client.name": client["name"]})
+
+    items = await db.whatsapp_analyses.find(
+        {"user_id": user["user_id"], "$or": or_conditions},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    return {"items": items}
+
+
 @router.get("/clients/{client_id}")
 async def get_client(client_id: str):
     doc = await db.clients.find_one({"id": client_id}, {"_id": 0})

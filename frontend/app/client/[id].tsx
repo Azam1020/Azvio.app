@@ -59,9 +59,16 @@ export default function ClientDetail() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>({});
 
+  const [waHistory, setWaHistory] = useState<any[]>([]);
   const load = useCallback(async () => {
     try {
       setClient(await api(`/clients/${id}`));
+      try {
+        const r = await api(`/clients/${id}/whatsapp-history`);
+        setWaHistory(r?.items ?? []);
+      } catch {
+        setWaHistory([]);
+      }
     } catch {}
   }, [id]);
 
@@ -372,6 +379,24 @@ export default function ClientDetail() {
             )}
           </TouchableOpacity>
 
+          {waHistory.length > 0 && (
+            <View style={{ marginTop: 14, marginBottom: 6 }}>
+              <Text style={styles.waHistoryTitle}>محادثات واتساب مرتبطة ({waHistory.length})</Text>
+              {waHistory.map((w: any) => (
+                <View key={w.id} style={styles.waHistoryItem}>
+                  <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.waHistoryLabel}>{w.label || 'محادثة واتساب'}</Text>
+                    <Text style={styles.waHistoryDate}>
+                      {new Date(w.created_at).toLocaleDateString('ar-SA')}
+                      {!w.applied && '  ·  لم تُطبّق بعد'}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
           {logs.length === 0 ? (
             <Text style={styles.emptyLogs}>لا توجد سجلات بعد</Text>
           ) : (
@@ -548,6 +573,10 @@ const styles = StyleSheet.create({
   },
   uploadText: { fontFamily: F.bold, fontSize: 12, color: C.brand },
   emptyLogs: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'center', paddingVertical: 12 },
+  waHistoryTitle: { fontFamily: F.bold, fontSize: 12, color: C.onSurface2, textAlign: 'right', marginBottom: 8 },
+  waHistoryItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
+  waHistoryLabel: { fontFamily: F.semibold, fontSize: 12, color: C.onSurface, textAlign: 'right' },
+  waHistoryDate: { fontFamily: F.regular, fontSize: 10, color: C.muted, textAlign: 'right', marginTop: 2 },
   logRow: {
     flexDirection: 'row-reverse',
     alignItems: 'flex-start',
