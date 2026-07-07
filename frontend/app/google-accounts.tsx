@@ -22,6 +22,12 @@ export default function GoogleAccountsScreen() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [calendars, setCalendars] = useState<any[]>([]);
+  const [tasklists, setTasklists] = useState<any[]>([]);
+  const [selectedCalendar, setSelectedCalendar] = useState('');
+  const [selectedTasklist, setSelectedTasklist] = useState('');
+  const [loadingPicker, setLoadingPicker] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -72,6 +78,54 @@ export default function GoogleAccountsScreen() {
       } catch (e: any) {
         Alert.alert('خطأ', e?.message || 'تعذر الفصل');
       }
+    }
+  };
+
+  const togglePermissions = async (email: string) => {
+    if (expanded === email) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(email);
+    setLoadingPicker(true);
+    setCalendars([]);
+    setTasklists([]);
+    try {
+      const [calRes, taskRes] = await Promise.all([
+        api(`/calendar/list?account=${encodeURIComponent(email)}`).catch(() => null),
+        api(`/gtasks/lists?account=${encodeURIComponent(email)}`).catch(() => null),
+      ]);
+      if (calRes) {
+        setCalendars(calRes.calendars || []);
+        setSelectedCalendar(calRes.selected_calendar_id || 'primary');
+      }
+      if (taskRes) {
+        setTasklists(taskRes.lists || []);
+        setSelectedTasklist(taskRes.selected_tasklist_id || '@default');
+      }
+    } catch {}
+    setLoadingPicker(false);
+  };
+
+  const pickCalendar = async (email: string, calendarId: string) => {
+    setSelectedCalendar(calendarId);
+    try {
+      await api(`/calendar/select?account=${encodeURIComponent(email)}&calendar_id=${encodeURIComponent(calendarId)}`, {
+        method: 'POST',
+      });
+    } catch (e: any) {
+      Alert.alert('خطأ', e?.message || 'تعذر حفظ اختيار التقويم');
+    }
+  };
+
+  const pickTasklist = async (email: string, tasklistId: string) => {
+    setSelectedTasklist(tasklistId);
+    try {
+      await api(`/gtasks/select?account=${encodeURIComponent(email)}&tasklist_id=${encodeURIComponent(tasklistId)}`, {
+        method: 'POST',
+      });
+    } catch (e: any) {
+      Alert.alert('خطأ', e?.message || 'تعذر حفظ اختيار قائمة المهام');
     }
   };
 
@@ -137,23 +191,84 @@ export default function GoogleAccountsScreen() {
         ) : (
           accounts.map((a) => (
             <View key={a.email} style={styles.accountCard}>
-              <View style={styles.accountIcon}>
-                <Ionicons name="logo-google" size={20} color="#DB4437" />
+              <View style={{ width: '100%' }}>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 12 }}>
+                  <View style={styles.accountIcon}>
+                    <Ionicons name="logo-google" size={20} color="#DB4437" />
+                  </View>
+                  <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <Text style={styles.accountEmail}>{a.email}</Text>
+                    <Text style={styles.accountLinked}>
+                      رُبط: {(a.linked_at || '').slice(0, 10)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => disconnect(a.email)}
+                    style={styles.disconnectBtn}
+                    testID={`disconnect-${a.email}`}
+                  >
+                    <Ionicons name="unlink" size={16} color={C.error} />
+                    <Text style={styles.disconnectText}>فصل</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity style={styles.permBtn} onPress={() => togglePermissions(a.email)}>
+                  <Ionicons name={expanded === a.email ? 'chevron-up' : 'chevron-down'} size={16} color={C.brand} />
+                  <Text style={styles.permBtnText}>اختيار التقويم وقائمة المهام (الصلاحيات)</Text>
+                </TouchableOpacity>
+
+                {expanded === a.email && (
+                  <View style={styles.permBox}>
+                    {loadingPicker ? (
+                      <ActivityIndicator color={C.brand} style={{ marginVertical: 12 }} />
+                    ) : (
+                      <>
+                        <Text style={styles.permLabel}>📅 التقويم المستخدم بالتطبيق</Text>
+                        {calendars.length === 0 ? (
+                          <Text style={styles.permEmpty}>تعذر جلب التقاويم (تأكد Calendar API مفعّلة)</Text>
+                        ) : (
+                          calendars.map((c) => (
+                            <TouchableOpacity
+                              key={c.id}
+                              style={styles.permOption}
+                              onPress={() => pickCalendar(a.email, c.id)}
+                            >
+                              <Ionicons
+                                name={selectedCalendar === c.id ? 'radio-button-on' : 'radio-button-off'}
+                                size={18}
+                                color={C.brand}
+                              />
+                              <Text style={styles.permOptionText}>
+                                {c.summary} {c.primary ? '(الأساسي)' : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          ))
+                        )}
+
+                        <Text style={[styles.permLabel, { marginTop: 14 }]}>✅ قائمة المهام المستخدمة بالتطبيق</Text>
+                        {tasklists.length === 0 ? (
+                          <Text style={styles.permEmpty}>تعذر جلب قوائم المهام (تأكد Google Tasks API مفعّلة وأعدت تسجيل الدخول)</Text>
+                        ) : (
+                          tasklists.map((t) => (
+                            <TouchableOpacity
+                              key={t.id}
+                              style={styles.permOption}
+                              onPress={() => pickTasklist(a.email, t.id)}
+                            >
+                              <Ionicons
+                                name={selectedTasklist === t.id ? 'radio-button-on' : 'radio-button-off'}
+                                size={18}
+                                color={C.brand}
+                              />
+                              <Text style={styles.permOptionText}>{t.title}</Text>
+                            </TouchableOpacity>
+                          ))
+                        )}
+                      </>
+                    )}
+                  </View>
+                )}
               </View>
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={styles.accountEmail}>{a.email}</Text>
-                <Text style={styles.accountLinked}>
-                  رُبط: {(a.linked_at || '').slice(0, 10)}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => disconnect(a.email)}
-                style={styles.disconnectBtn}
-                testID={`disconnect-${a.email}`}
-              >
-                <Ionicons name="unlink" size={16} color={C.error} />
-                <Text style={styles.disconnectText}>فصل</Text>
-              </TouchableOpacity>
             </View>
           ))
         )}
@@ -189,15 +304,27 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: F.regular, fontSize: 12, color: C.error, textAlign: 'center', marginBottom: 8 },
   sectionTitle: { fontFamily: F.bold, fontSize: 15, color: C.onSurface, textAlign: 'right', marginTop: 16, marginBottom: 10 },
   accountCard: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 12,
     backgroundColor: C.surface,
     borderRadius: R.md,
     padding: 14,
     marginBottom: 8,
     ...shadow,
   },
+  permBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.divider,
+  },
+  permBtnText: { fontFamily: F.semibold, fontSize: 12, color: C.brand },
+  permBox: { marginTop: 10, backgroundColor: C.surface2, borderRadius: R.md, padding: 12 },
+  permLabel: { fontFamily: F.bold, fontSize: 12, color: C.onSurface, textAlign: 'right', marginBottom: 8 },
+  permEmpty: { fontFamily: F.regular, fontSize: 11, color: C.muted, textAlign: 'right' },
+  permOption: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  permOptionText: { fontFamily: F.regular, fontSize: 13, color: C.onSurface, textAlign: 'right', flex: 1 },
   accountIcon: {
     width: 42,
     height: 42,

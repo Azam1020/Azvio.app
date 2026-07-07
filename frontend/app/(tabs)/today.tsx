@@ -57,6 +57,18 @@ export default function TodayScreen() {
 
   const load = useCallback(async () => {
     try {
+      // مزامنة صامتة مع Google Tasks لو فيه حساب مربوط — أي تعديل/حذف صار مباشرة
+      // بتطبيق Google Tasks ينعكس هنا تلقائياً قبل ما نعرض القائمة.
+      try {
+        const accountsRes = await api('/google/accounts');
+        const firstAccount = accountsRes?.accounts?.[0]?.email;
+        if (firstAccount) {
+          await api(`/gtasks/sync-from-google?account=${encodeURIComponent(firstAccount)}`, { method: 'POST' });
+        }
+      } catch {
+        // ما فيه حساب مربوط أو المزامنة فشلت — نكمل بالمهام المحلية بدون ما نوقف الشاشة
+      }
+
       // جرب الـ Endpoint المحسّن أولاً
       try {
         const enhanced = await api('/tasks/today/enhanced');
