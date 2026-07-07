@@ -106,10 +106,16 @@ async def edit_user(user_id: str, body: UserEdit):
     return updated
 
 
+OWNER_EMAIL = "azzam@azvio.co"
+
+
 @router.delete("/{user_id}", dependencies=[Depends(get_current_admin)])
 async def delete_user(user_id: str, current_admin: dict = Depends(get_current_admin)):
     if user_id == current_admin["user_id"]:
         raise HTTPException(status_code=400, detail="لا يمكنك حذف حسابك الخاص")
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if target and (target.get("email") or "").lower() == OWNER_EMAIL.lower():
+        raise HTTPException(status_code=403, detail="لا يمكن حذف حساب مالك التطبيق")
     result = await db.users.delete_one({"user_id": user_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
@@ -121,6 +127,15 @@ async def delete_user(user_id: str, current_admin: dict = Depends(get_current_ad
 async def update_role(user_id: str, body: UserRoleUpdate):
     if not is_valid_role(body.role):
         raise HTTPException(status_code=400, detail="صلاحية غير معروفة")
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
+    is_owner_account = (target.get("email") or "").lower() == OWNER_EMAIL.lower()
+    if is_owner_account:
+        raise HTTPException(status_code=403, detail="لا يمكن تغيير صلاحية مالك التطبيق")
+    if body.role == "admin":
+        # لا أحد غير مالك التطبيق يصير admin — أعلى صلاحية لغيره هي "project_manager"
+        raise HTTPException(status_code=403, detail="صلاحية الإدارة الكاملة محجوزة لمالك التطبيق فقط")
     result = await db.users.update_one({"user_id": user_id}, {"$set": {"role": body.role}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
@@ -131,6 +146,9 @@ async def update_role(user_id: str, body: UserRoleUpdate):
 async def disable_user(user_id: str, current_admin: dict = Depends(get_current_admin)):
     if user_id == current_admin["user_id"]:
         raise HTTPException(status_code=400, detail="لا يمكنك تعطيل حسابك الخاص")
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if target and (target.get("email") or "").lower() == OWNER_EMAIL.lower():
+        raise HTTPException(status_code=403, detail="لا يمكن تعطيل حساب مالك التطبيق")
     result = await db.users.update_one({"user_id": user_id}, {"$set": {"active": False}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
