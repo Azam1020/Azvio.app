@@ -30,11 +30,6 @@ export function SignaturePad({ onSave, onCancel, height = 220 }: Props) {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      // .Capture: تمنع أي عنصر أب (زي حركة "سحب للرجوع" بـ iOS) من سحب اللمسة
-      // بعيد عن اللوحة أثناء الرسم — وهذا سبب إحساس "تنقل الصفحة" أثناء التوقيع.
-      onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
         const { locationX, locationY } = e.nativeEvent;
         currentPath.current = `M${locationX.toFixed(1)},${locationY.toFixed(1)} `;
@@ -46,8 +41,10 @@ export function SignaturePad({ onSave, onCancel, height = 220 }: Props) {
         scheduleRender();
       },
       onPanResponderRelease: () => {
-        setPaths((prev) => [...prev, currentPath.current]);
+        const finished = currentPath.current;
         currentPath.current = '';
+        if (finished) setPaths((prev) => [...prev, finished]);
+        scheduleRender();
       },
     })
   ).current;
