@@ -296,10 +296,55 @@ export default function InvoicesScreen() {
           }}
         />
 
-        <TouchableOpacity style={styles.pricingBtn} onPress={() => setPricingOpen(true)}>
+        <TouchableOpacity style={styles.pricingBtn} onPress={() => setPricingOpen((v) => !v)}>
           <Ionicons name="sparkles" size={16} color={C.brand} />
-          <Text style={styles.pricingBtnText}>احسب سعرًا مقترحًا من سند</Text>
+          <Text style={styles.pricingBtnText}>
+            {pricingOpen ? 'إخفاء التسعير الذكي' : 'احسب سعرًا مقترحًا من سند'}
+          </Text>
         </TouchableOpacity>
+
+        {pricingOpen && (
+          <View style={styles.pricingInline}>
+            <Field
+              label="أيام التصوير"
+              value={pricingForm.shooting_days}
+              onChangeText={(v) => setPricingForm({ ...pricingForm, shooting_days: v })}
+              keyboardType="numeric"
+            />
+            <Field
+              label="دقائق المونتاج"
+              value={pricingForm.editing_minutes}
+              onChangeText={(v) => setPricingForm({ ...pricingForm, editing_minutes: v })}
+              keyboardType="numeric"
+            />
+            <Text style={styles.chipsLabel}>مستوى المؤثرات</Text>
+            <Chips
+              options={[
+                { key: 'basic', label: 'بسيط' },
+                { key: 'medium', label: 'متوسط' },
+                { key: 'advanced', label: 'متقدم' },
+              ]}
+              value={pricingForm.effects_level}
+              onChange={(v) => setPricingForm({ ...pricingForm, effects_level: v })}
+            />
+            <TouchableOpacity style={styles.calcBtn} onPress={runPricingSuggestion} disabled={pricingLoading}>
+              <Text style={styles.calcBtnText}>{pricingLoading ? 'جارٍ الحساب...' : 'احسب السعر المقترح'}</Text>
+            </TouchableOpacity>
+
+            {pricingResult && (
+              <View style={styles.resultCard}>
+                <Text style={styles.resultPrice}>{fmt(pricingResult.suggested_price)} ر.س</Text>
+                <Text style={styles.resultRange}>
+                  النطاق: {fmt(pricingResult.price_range_low)} - {fmt(pricingResult.price_range_high)} ر.س
+                </Text>
+                <Text style={styles.resultReason}>{pricingResult.reasoning}</Text>
+                <TouchableOpacity style={styles.useBtn} onPress={useSuggestedPrice}>
+                  <Text style={styles.useBtnText}>استخدم هذا السعر كبند</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
 
         <Text style={styles.chipsLabel}>البنود</Text>
         {items.map((it, i) => (
@@ -378,47 +423,6 @@ export default function InvoicesScreen() {
 
         <Field label="ملاحظات (اختياري)" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} multiline />
       </AppModal>
-
-      <AppModal visible={pricingOpen} title="التسعير الذكي" onClose={() => setPricingOpen(false)}>
-        <Field
-          label="أيام التصوير"
-          value={pricingForm.shooting_days}
-          onChangeText={(v) => setPricingForm({ ...pricingForm, shooting_days: v })}
-          keyboardType="numeric"
-        />
-        <Field
-          label="دقائق المونتاج"
-          value={pricingForm.editing_minutes}
-          onChangeText={(v) => setPricingForm({ ...pricingForm, editing_minutes: v })}
-          keyboardType="numeric"
-        />
-        <Text style={styles.chipsLabel}>مستوى المؤثرات</Text>
-        <Chips
-          options={[
-            { key: 'basic', label: 'بسيط' },
-            { key: 'medium', label: 'متوسط' },
-            { key: 'advanced', label: 'متقدم' },
-          ]}
-          value={pricingForm.effects_level}
-          onChange={(v) => setPricingForm({ ...pricingForm, effects_level: v })}
-        />
-        <TouchableOpacity style={styles.calcBtn} onPress={runPricingSuggestion} disabled={pricingLoading}>
-          <Text style={styles.calcBtnText}>{pricingLoading ? 'جارٍ الحساب...' : 'احسب السعر المقترح'}</Text>
-        </TouchableOpacity>
-
-        {pricingResult && (
-          <View style={styles.resultCard}>
-            <Text style={styles.resultPrice}>{fmt(pricingResult.suggested_price)} ر.س</Text>
-            <Text style={styles.resultRange}>
-              النطاق: {fmt(pricingResult.price_range_low)} - {fmt(pricingResult.price_range_high)} ر.س
-            </Text>
-            <Text style={styles.resultReason}>{pricingResult.reasoning}</Text>
-            <TouchableOpacity style={styles.useBtn} onPress={useSuggestedPrice}>
-              <Text style={styles.useBtnText}>استخدم هذا السعر كبند</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </AppModal>
     </View>
   );
 }
@@ -459,6 +463,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   pricingBtnText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
+  pricingInline: {
+    backgroundColor: C.surface2,
+    borderRadius: R.md,
+    padding: 12,
+    marginBottom: 16,
+  },
   itemRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 8 },
   itemDesc: {
     flex: 1,
