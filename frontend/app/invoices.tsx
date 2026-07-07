@@ -8,6 +8,7 @@ import { api, getToken } from '@/src/api';
 import { AppModal, Chips, Empty, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { C, F, R, fmt, shadow } from '@/src/theme';
 import { ServiceTypeChips } from '@/src/ServiceTypeChips';
+import { CategoryPicker } from '@/src/CategoryPicker';
 
 const BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 
@@ -278,11 +279,21 @@ export default function InvoicesScreen() {
           includeBoth
         />
 
-        <Field
-          label="الفئة الفرعية (اختياري)"
+        <CategoryPicker
+          serviceType={form.service_type}
           value={form.sub_category}
-          onChangeText={(v) => setForm({ ...form, sub_category: v })}
-          placeholder="مثال: عقاري، فعاليات"
+          onChange={(v) => setForm({ ...form, sub_category: v })}
+          onPriceHint={(price) => {
+            // عبّي أول بند تلقائياً بسعر الفئة فقط لو المستخدم ما كتب مبلغ بنفسه
+            setItems((prev) => {
+              if (prev.length && !prev[0].amount) {
+                const next = [...prev];
+                next[0] = { ...next[0], amount: String(price), description: next[0].description || form.sub_category };
+                return next;
+              }
+              return prev;
+            });
+          }}
         />
 
         <TouchableOpacity style={styles.pricingBtn} onPress={() => setPricingOpen(true)}>
