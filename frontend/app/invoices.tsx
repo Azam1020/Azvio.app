@@ -67,6 +67,10 @@ export default function InvoicesScreen() {
     equipment_cost: '',
     logistics_cost: '',
     admin_fees: '',
+    crew_size: '1',
+    is_rush: false,
+    revision_rounds: '1',
+    usage_rights: 'standard',
     notes: '',
   });
   const [pricingResult, setPricingResult] = useState<any>(null);
@@ -118,6 +122,10 @@ export default function InvoicesScreen() {
           equipment_cost: parseFloat(pricingForm.equipment_cost) || 0,
           logistics_cost: parseFloat(pricingForm.logistics_cost) || 0,
           admin_fees: parseFloat(pricingForm.admin_fees) || 0,
+          crew_size: parseFloat(pricingForm.crew_size) || 1,
+          is_rush: pricingForm.is_rush,
+          revision_rounds: parseFloat(pricingForm.revision_rounds) || 1,
+          usage_rights: pricingForm.usage_rights,
           notes: pricingForm.notes,
         }),
       });
@@ -130,6 +138,10 @@ export default function InvoicesScreen() {
         pricingForm.equipment_cost && `تكلفة المعدات: ${pricingForm.equipment_cost} ر.س`,
         pricingForm.logistics_cost && `رسوم لوجستية: ${pricingForm.logistics_cost} ر.س`,
         pricingForm.admin_fees && `رسوم إدارية: ${pricingForm.admin_fees} ر.س`,
+        parseFloat(pricingForm.crew_size) > 1 && `عدد الطاقم: ${pricingForm.crew_size}`,
+        pricingForm.usage_rights === 'exclusive' && 'حقوق استخدام حصرية/تجارية كاملة',
+        pricingForm.is_rush && 'تسليم مستعجل',
+        parseFloat(pricingForm.revision_rounds) !== 1 && `جولات تعديل مجانية: ${pricingForm.revision_rounds}`,
         pricingForm.notes && `ملاحظات: ${pricingForm.notes}`,
       ].filter(Boolean);
       if (detailLines.length) {
@@ -155,6 +167,9 @@ export default function InvoicesScreen() {
     if (pricingForm.effects_level && pricingForm.effects_level !== 'basic') {
       parts.push(pricingForm.effects_level === 'advanced' ? 'مؤثرات متقدمة' : 'مؤثرات متوسطة');
     }
+    if (parseFloat(pricingForm.crew_size) > 1) parts.push(`طاقم ${pricingForm.crew_size} أفراد`);
+    if (pricingForm.usage_rights === 'exclusive') parts.push('حقوق استخدام حصرية');
+    if (pricingForm.is_rush) parts.push('تسليم مستعجل');
     const summary = parts.length ? parts.join(' + ') : form.sub_category || 'الخدمة المتفق عليها';
 
     setItems((prev) => [
@@ -393,6 +408,40 @@ export default function InvoicesScreen() {
               keyboardType="numeric"
             />
             <Field
+              label="عدد أفراد الطاقم"
+              value={pricingForm.crew_size}
+              onChangeText={(v) => setPricingForm({ ...pricingForm, crew_size: v })}
+              keyboardType="numeric"
+              placeholder="1"
+            />
+            <Field
+              label="جولات التعديل المجانية المشمولة"
+              value={pricingForm.revision_rounds}
+              onChangeText={(v) => setPricingForm({ ...pricingForm, revision_rounds: v })}
+              keyboardType="numeric"
+              placeholder="1"
+            />
+            <Text style={styles.chipsLabel}>حقوق الاستخدام</Text>
+            <Chips
+              options={[
+                { key: 'standard', label: 'عادي' },
+                { key: 'exclusive', label: 'حصري/تجاري كامل' },
+              ]}
+              value={pricingForm.usage_rights}
+              onChange={(v) => setPricingForm({ ...pricingForm, usage_rights: v })}
+            />
+            <TouchableOpacity
+              style={styles.rushRow}
+              onPress={() => setPricingForm({ ...pricingForm, is_rush: !pricingForm.is_rush })}
+            >
+              <Ionicons
+                name={pricingForm.is_rush ? 'checkbox' : 'square-outline'}
+                size={20}
+                color={C.brand}
+              />
+              <Text style={styles.rushLabel}>تسليم مستعجل (يضيف رسوم استعجال)</Text>
+            </TouchableOpacity>
+            <Field
               label="ملاحظات إضافية (اختياري)"
               value={pricingForm.notes}
               onChangeText={(v) => setPricingForm({ ...pricingForm, notes: v })}
@@ -551,6 +600,8 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 16,
   },
+  rushRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  rushLabel: { fontFamily: F.regular, fontSize: 13, color: C.onSurface },
   itemRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 8 },
   itemDesc: {
     flex: 1,

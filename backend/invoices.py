@@ -289,6 +289,10 @@ class PricingSuggestRequest(BaseModel):
     equipment_cost: float = 0  # تكلفة معدات/أغراض المشروع
     logistics_cost: float = 0  # رسوم لوجستية (تنقل، شحن، إلخ)
     admin_fees: float = 0  # رسوم إدارية/تصاريح
+    crew_size: float = 1  # عدد أفراد الطاقم (مصور، مساعد، طيار درون...)
+    is_rush: bool = False  # تسليم مستعجل
+    revision_rounds: float = 1  # عدد جولات التعديل المجانية المشمولة
+    usage_rights: str = "standard"  # standard | exclusive — الاستخدام العادي مقابل الحصري/التجاري الكامل
     notes: str = ""
 
 
@@ -326,6 +330,10 @@ async def suggest_pricing(body: PricingSuggestRequest):
 - تكلفة المعدات/الأغراض: {body.equipment_cost} ر.س
 - الرسوم اللوجستية (تنقل/شحن): {body.logistics_cost} ر.س
 - الرسوم الإدارية/التصاريح: {body.admin_fees} ر.س
+- عدد أفراد الطاقم: {body.crew_size} (كل فرد إضافي = تكلفة يوم عمل إضافية تقريباً)
+- تسليم مستعجل؟: {'نعم — أضف رسوم استعجال 20-40%' if body.is_rush else 'لا'}
+- جولات التعديل المجانية المشمولة بالسعر: {body.revision_rounds}
+- حقوق الاستخدام: {'حصري/تجاري كامل (يستاهل سعر أعلى بكثير، العميل يملك الحقوق الكاملة ولا يحق لك إعادة استخدام العمل بمعرض أعمالك أو بيعه لغيره)' if body.usage_rights == 'exclusive' else 'عادي (تقدر تستخدم العمل بمعرض أعمالك)'}
 - إجمالي التكاليف المباشرة المذكورة أعلاه: {direct_costs} ر.س (لازم السعر المقترح يغطيها + هامش ربح، مو أقل منها)
 - ملاحظات إضافية: {body.notes or 'لا توجد'}
 
