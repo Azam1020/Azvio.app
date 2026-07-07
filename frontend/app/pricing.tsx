@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -102,12 +103,23 @@ export default function MyPricingScreen() {
   };
 
   const askAdvice = async () => {
+    if (items.length === 0) {
+      Alert.alert('تسعيرتك فاضية', 'أضف تسعيرة واحدة على الأقل الأول (بزر +) عشان سند يقدر يحلّلها.');
+      return;
+    }
     setLoadingAdvice(true);
     setAdvice(null);
     try {
       const r = await api('/sanad/pricing-advice', { method: 'POST', body: JSON.stringify({}) });
       setAdvice(r);
-    } catch {}
+    } catch (e: any) {
+      Alert.alert(
+        'تعذّر الحصول على نصيحة سند',
+        e?.message === 'Network request failed'
+          ? 'تعذر الوصول للسيرفر. لو أول استخدام اليوم، قد يحتاج حتى 50 ثانية للاستيقاظ — جرب مرة ثانية.'
+          : e?.message || 'حصل خطأ غير متوقع.'
+      );
+    }
     setLoadingAdvice(false);
   };
 
@@ -142,7 +154,7 @@ export default function MyPricingScreen() {
         <TouchableOpacity
           style={[styles.adviceBtn, loadingAdvice && { opacity: 0.6 }]}
           onPress={askAdvice}
-          disabled={loadingAdvice || items.length === 0}
+          disabled={loadingAdvice}
           testID="ask-advice-btn"
         >
           {loadingAdvice ? (
