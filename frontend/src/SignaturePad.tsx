@@ -13,6 +13,18 @@ export function SignaturePad({ onSave, onCancel, height = 220 }: Props) {
   const [paths, setPaths] = useState<string[]>([]);
   const currentPath = useRef('');
   const [, forceRender] = useState(0);
+  const rafScheduled = useRef(false);
+
+  // بدل ما نعيد الرسم مع كل نقطة لمس (يحدث عشرات المرات بالثانية ويسبب تقطّع الخط
+  // على الأجهزة الأبطأ)، نجمّع كل التحديثات السريعة ونعيد الرسم مرة وحدة بالفريم فقط.
+  const scheduleRender = () => {
+    if (rafScheduled.current) return;
+    rafScheduled.current = true;
+    requestAnimationFrame(() => {
+      rafScheduled.current = false;
+      forceRender((n) => n + 1);
+    });
+  };
 
   const panResponder = useRef(
     PanResponder.create({
@@ -21,12 +33,12 @@ export function SignaturePad({ onSave, onCancel, height = 220 }: Props) {
       onPanResponderGrant: (e) => {
         const { locationX, locationY } = e.nativeEvent;
         currentPath.current = `M${locationX.toFixed(1)},${locationY.toFixed(1)} `;
-        forceRender((n) => n + 1);
+        scheduleRender();
       },
       onPanResponderMove: (e) => {
         const { locationX, locationY } = e.nativeEvent;
         currentPath.current += `L${locationX.toFixed(1)},${locationY.toFixed(1)} `;
-        forceRender((n) => n + 1);
+        scheduleRender();
       },
       onPanResponderRelease: () => {
         setPaths((prev) => [...prev, currentPath.current]);
