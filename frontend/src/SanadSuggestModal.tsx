@@ -37,13 +37,25 @@ export function SanadSuggestModal({
   const [items, setItems] = useState<SanadItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [accepting, setAccepting] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const askSanad = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const r = await fetcher({ topic, service_type: serviceType });
       setItems(r || []);
-    } catch {}
+      if (!r || r.length === 0) {
+        setErrorMsg('سند ما رجّع أي اقتراحات هالمرة، جرّب تاني أو غيّر الموضوع.');
+      }
+    } catch (e: any) {
+      // الخطأ كان يُبلع بصمت هنا سابقاً — سبب "الزر ما يسوي شي" بدون أي تنبيه للمستخدم.
+      setErrorMsg(
+        e?.message === 'Network request failed'
+          ? 'تعذر الوصول للسيرفر. لو أول استخدام اليوم، قد يحتاج السيرفر حتى 50 ثانية للاستيقاظ — جرب مرة ثانية.'
+          : e?.message || 'حصل خطأ غير متوقع، جرب مرة ثانية.'
+      );
+    }
     setLoading(false);
   };
 
@@ -103,7 +115,14 @@ export function SanadSuggestModal({
         )}
       </TouchableOpacity>
 
-      {items.length === 0 && !loading && <Text style={styles.emptyText}>{emptyText}</Text>}
+      {!!errorMsg && (
+        <View style={styles.errorBox} testID="sanad-error-msg">
+          <Ionicons name="alert-circle-outline" size={16} color={C.error} />
+          <Text style={styles.errorText}>{errorMsg}</Text>
+        </View>
+      )}
+
+      {items.length === 0 && !loading && !errorMsg && <Text style={styles.emptyText}>{emptyText}</Text>}
 
       {items.map((it, idx) => {
         const name = String(it[primaryField] || '');
@@ -171,6 +190,16 @@ const styles = StyleSheet.create({
   },
   suggestText: { fontFamily: F.bold, fontSize: 14, color: '#FFF' },
   emptyText: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'center', marginTop: 20 },
+  errorBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FDECEA',
+    borderRadius: R.md,
+    padding: 12,
+    marginTop: 12,
+  },
+  errorText: { flex: 1, fontFamily: F.regular, fontSize: 12, color: C.error, textAlign: 'right', lineHeight: 18 },
   card: {
     flexDirection: 'row-reverse',
     alignItems: 'flex-start',
