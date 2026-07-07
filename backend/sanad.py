@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from auth import get_current_user
-from database import db
+from database import db, today_str
 from crud_routes import guess_expense_category
 from llm_client import ask_text, ask_with_file, LLMError
 
@@ -106,8 +106,6 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def today_str():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 async def build_context() -> str:

@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from auth import get_current_user
-from database import db
+from database import db, today_str
 from user_settings import get_notification_prefs
 
 logger = logging.getLogger(__name__)
@@ -40,8 +40,6 @@ MOTIVATIONAL_QUOTES = [
 ]
 
 
-def today_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 class RegisterTokenBody(BaseModel):

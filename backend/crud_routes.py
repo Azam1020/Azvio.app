@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from auth import get_current_user
-from database import db
+from database import db, today_str
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -16,8 +16,6 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def today_str():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def new_id():
