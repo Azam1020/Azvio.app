@@ -146,9 +146,20 @@ export default function InvoicesScreen() {
 
   const useSuggestedPrice = () => {
     if (!pricingResult) return;
+    // وصف احترافي يلخّص الخدمة الفعلية للعميل — مو "من سند"، هذا شي داخلي ما يهم العميل
+    const parts: string[] = [];
+    if (form.sub_category) parts.push(form.sub_category);
+    if (parseFloat(pricingForm.hours) > 0) parts.push(`${pricingForm.hours} ساعة عمل`);
+    if (parseFloat(pricingForm.shooting_days) > 0) parts.push(`${pricingForm.shooting_days} يوم تصوير`);
+    if (parseFloat(pricingForm.editing_minutes) > 0) parts.push(`${pricingForm.editing_minutes} دقيقة مونتاج`);
+    if (pricingForm.effects_level && pricingForm.effects_level !== 'basic') {
+      parts.push(pricingForm.effects_level === 'advanced' ? 'مؤثرات متقدمة' : 'مؤثرات متوسطة');
+    }
+    const summary = parts.length ? parts.join(' + ') : form.sub_category || 'الخدمة المتفق عليها';
+
     setItems((prev) => [
       ...prev.filter((it) => it.description || it.amount),
-      { description: 'السعر المقترح من سند', amount: String(pricingResult.suggested_price) },
+      { description: summary, amount: String(pricingResult.suggested_price) },
     ]);
     setPricingOpen(false);
   };
