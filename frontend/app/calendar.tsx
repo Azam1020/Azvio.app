@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -59,6 +60,7 @@ export default function CalendarScreen() {
     client_name: '',
     notes: '',
   });
+  const [editing, setEditing] = useState<any>(null); // الحدث الحالي قيد التعديل، أو null لو إضافة جديدة
 
   const load = useCallback(async () => {
     try {
@@ -127,6 +129,8 @@ export default function CalendarScreen() {
         notes: g.description || '',
         __source: 'google',
         __account: g.__account,
+        __googleEventId: g.id,
+        __calendarId: g._azvio_calendar_id || '',
         __color: '#DB4437',
         __htmlLink: g.htmlLink,
       });
@@ -162,53 +166,107 @@ export default function CalendarScreen() {
     setSelectedDate(dateISO(t));
   };
 
+  const openEdit = (e: any) => {
+    setEditing(e);
+    setForm({
+      title: e.title || '',
+      event_type: e.event_type || 'shooting',
+      date: e.date || selectedDate,
+      time: e.time || '',
+      client_name: e.client_name || '',
+      notes: e.notes || '',
+    });
+    setModal(true);
+  };
+
   const save = async () => {
     if (!form.title.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(form.date)) return;
     setSaving(true);
     try {
-      await api('/events', { method: 'POST', body: JSON.stringify(form) });
-      if (syncToGoogle && syncAccountEmail && googleAccounts.length > 0) {
-        try {
-          const startIso = form.time
-            ? `${form.date}T${form.time}:00`
-            : `${form.date}T00:00:00`;
-          const hParts = form.time ? form.time.split(':') : ['0', '0'];
-          const nextH = Math.min(23, parseInt(hParts[0] || '0', 10) + 1);
-          const endIso = form.time
-            ? `${form.date}T${String(nextH).padStart(2, '0')}:${hParts[1] || '00'}:00`
-            : `${form.date}T23:59:00`;
-          await api('/google/calendar/events', {
-            method: 'POST',
-            body: JSON.stringify({
-              account_email: syncAccountEmail,
-              summary: form.title,
-              description: [form.client_name ? `العميل: ${form.client_name}` : '', form.notes].filter(Boolean).join('\n'),
-              start: startIso,
-              end: endIso,
-              all_day: !form.time,
-              timezone: 'Asia/Riyadh',
-            }),
-          });
-        } catch (e) {
-          console.warn('Google sync failed', e);
+      if (editing?.__source === 'google') {
+        // تعديل حدث Google مباشرة — ينعكس بتطبيق Google Calendar فوراً
+        const startIso = form.time ? `${form.date}T${form.time}:00` : `${form.date}T00:00:00`;
+        const hParts = form.time ? form.time.split(':') : ['0', '0'];
+        const nextH = Math.min(23, parseInt(hParts[0] || '0', 10) + 1);
+        const endIso = form.time
+          ? `${form.date}T${String(nextH).padStart(2, '0')}:${hParts[1] || '00'}:00`
+          : `${form.date}T23:59:00`;
+        await api('/google/calendar/events', {
+          method: 'PUT',
+          body: JSON.stringify({
+            account_email: editing.__account,
+            google_event_id: editing.__googleEventId,
+            calendar_id: editing.__calendarId || '',
+            summary: form.title,
+            description: [form.client_name ? `العميل: ${form.client_name}` : '', form.notes].filter(Boolean).join('\n'),
+            start: startIso,
+            end: endIso,
+            all_day: !form.time,
+            timezone: 'Asia/Riyadh',
+          }),
+        });
+      } else if (editing) {
+        // تعديل حدث محلي
+        await api(`/events/${editing.id}`, { method: 'PUT', body: JSON.stringify(form) });
+      } else {
+        // إضافة حدث جديد
+        await api('/events', { method: 'POST', body: JSON.stringify(form) });
+        if (syncToGoogle && syncAccountEmail && googleAccounts.length > 0) {
+          try {
+            const startIso = form.time
+              ? `${form.date}T${form.time}:00`
+              : `${form.date}T00:00:00`;
+            const hParts = form.time ? form.time.split(':') : ['0', '0'];
+            const nextH = Math.min(23, parseInt(hParts[0] || '0', 10) + 1);
+            const endIso = form.time
+              ? `${form.date}T${String(nextH).padStart(2, '0')}:${hParts[1] || '00'}:00`
+              : `${form.date}T23:59:00`;
+            await api('/google/calendar/events', {
+              method: 'POST',
+              body: JSON.stringify({
+                account_email: syncAccountEmail,
+                summary: form.title,
+                description: [form.client_name ? `العميل: ${form.client_name}` : '', form.notes].filter(Boolean).join('\n'),
+                start: startIso,
+                end: endIso,
+                all_day: !form.time,
+                timezone: 'Asia/Riyadh',
+              }),
+            });
+          } catch (e) {
+            console.warn('Google sync failed', e);
+          }
         }
       }
       setModal(false);
+      setEditing(null);
       setForm({ title: '', event_type: 'shooting', date: selectedDate, time: '', client_name: '', notes: '' });
       load();
-    } catch {}
+    } catch (e: any) {
+      Alert.alert('تعذّر الحفظ', e?.message || 'حدث خطأ');
+    }
     setSaving(false);
   };
 
   const remove = async (e: any) => {
-    if (e.__source === 'google') return; // don't allow deleting google-only from this UI
     if (await confirmAsync('حذف الموعد', `حذف "${e.title}"؟`)) {
-      await api(`/events/${e.id}`, { method: 'DELETE' });
-      load();
+      try {
+        if (e.__source === 'google') {
+          const params = new URLSearchParams({ account: e.__account || '' });
+          if (e.__calendarId) params.append('calendar_id', e.__calendarId);
+          await api(`/google/calendar/events/${e.__googleEventId}?${params.toString()}`, { method: 'DELETE' });
+        } else {
+          await api(`/events/${e.id}`, { method: 'DELETE' });
+        }
+        load();
+      } catch (err: any) {
+        Alert.alert('تعذّر الحذف', err?.message || 'حدث خطأ');
+      }
     }
   };
 
   const openAdd = (dateStr?: string) => {
+    setEditing(null);
     setForm({
       title: '',
       event_type: 'shooting',
@@ -334,6 +392,7 @@ export default function CalendarScreen() {
             onSelect={setSelectedDate}
             onAdd={openAdd}
             onDelete={remove}
+            onEdit={openEdit}
           />
         )}
 
@@ -351,7 +410,7 @@ export default function CalendarScreen() {
               <Text style={styles.emptyDay}>لا مواعيد في هذا اليوم</Text>
             ) : (
               eventsByDate[selectedDate].map((e) => (
-                <EventCard key={e.id} event={e} onDelete={remove} />
+                <EventCard key={e.id} event={e} onDelete={remove} onEdit={openEdit} />
               ))
             )}
           </View>
@@ -371,7 +430,7 @@ export default function CalendarScreen() {
                 <View key={date} style={{ marginBottom: 16 }}>
                   <Text style={styles.dateHeader}>{formatDateArabic(date)}</Text>
                   {items.map((e) => (
-                    <EventCard key={e.id} event={e} onDelete={remove} />
+                    <EventCard key={e.id} event={e} onDelete={remove} onEdit={openEdit} />
                   ))}
                 </View>
               ))
@@ -380,7 +439,16 @@ export default function CalendarScreen() {
         )}
       </ScrollView>
 
-      <AppModal visible={modal} title="إضافة موعد" onClose={() => setModal(false)} onSave={save} saving={saving}>
+      <AppModal
+        visible={modal}
+        title={editing ? 'تعديل الموعد' : 'إضافة موعد'}
+        onClose={() => {
+          setModal(false);
+          setEditing(null);
+        }}
+        onSave={save}
+        saving={saving}
+      >
         <Field label="العنوان *" value={form.title} onChangeText={(v) => setForm({ ...form, title: v })} placeholder="مثال: تصوير فيلا الأمير" />
         <Text style={styles.fieldLabel}>النوع</Text>
         <Chips options={EVENT_TYPES} value={form.event_type} onChange={(v) => setForm({ ...form, event_type: v })} />
@@ -431,11 +499,15 @@ export default function CalendarScreen() {
   );
 }
 
-function EventCard({ event, onDelete }: { event: any; onDelete: (e: any) => void }) {
+function EventCard({ event, onDelete, onEdit }: { event: any; onDelete: (e: any) => void; onEdit: (e: any) => void }) {
   const meta = EVENT_META[event.event_type] || EVENT_META.other;
   const isGoogle = event.__source === 'google';
   return (
-    <View style={[styles.eventCard, isGoogle && styles.googleEvent]}>
+    <TouchableOpacity
+      style={[styles.eventCard, isGoogle && styles.googleEvent]}
+      onPress={() => onEdit(event)}
+      activeOpacity={0.7}
+    >
       <View style={[styles.eventIcon, { backgroundColor: `${event.__color || meta.color}18` }]}>
         <Ionicons name={isGoogle ? 'logo-google' : meta.icon} size={18} color={event.__color || meta.color} />
       </View>
@@ -456,12 +528,10 @@ function EventCard({ event, onDelete }: { event: any; onDelete: (e: any) => void
         </Text>
         {!!event.notes && <Text style={styles.eventNotes} numberOfLines={2}>{event.notes}</Text>}
       </View>
-      {!isGoogle && (
-        <TouchableOpacity onPress={() => onDelete(event)} hitSlop={6}>
-          <Ionicons name="close" size={18} color={C.muted} />
-        </TouchableOpacity>
-      )}
-    </View>
+      <TouchableOpacity onPress={() => onDelete(event)} hitSlop={6}>
+        <Ionicons name="close" size={18} color={C.muted} />
+      </TouchableOpacity>
+    </TouchableOpacity>
   );
 }
 
@@ -558,6 +628,7 @@ function WeekView({
   onSelect,
   onAdd,
   onDelete,
+  onEdit,
 }: {
   cursor: Date;
   eventsByDate: Record<string, any[]>;
@@ -565,6 +636,7 @@ function WeekView({
   onSelect: (d: string) => void;
   onAdd: (d?: string) => void;
   onDelete: (e: any) => void;
+  onEdit: (e: any) => void;
 }) {
   // Get week start (Sunday) for cursor
   const start = new Date(cursor);
@@ -620,7 +692,7 @@ function WeekView({
         {(eventsByDate[selectedDate] || []).length === 0 ? (
           <Text style={styles.emptyDay}>لا مواعيد في هذا اليوم</Text>
         ) : (
-          eventsByDate[selectedDate].map((e) => <EventCard key={e.id} event={e} onDelete={onDelete} />)
+          eventsByDate[selectedDate].map((e) => <EventCard key={e.id} event={e} onDelete={onDelete} onEdit={onEdit} />)
         )}
       </View>
     </View>

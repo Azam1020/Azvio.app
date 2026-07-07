@@ -810,6 +810,16 @@ async def create_event(body: EventCreate):
     return doc
 
 
+@router.put("/events/{event_id}")
+async def update_event(event_id: str, body: EventCreate):
+    updates = body.model_dump()
+    updates["updated_at"] = now_iso()
+    result = await db.events.update_one({"id": event_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="الموعد غير موجود")
+    return await db.events.find_one({"id": event_id}, {"_id": 0})
+
+
 @router.delete("/events/{event_id}")
 async def delete_event(event_id: str):
     await db.events.delete_one({"id": event_id})

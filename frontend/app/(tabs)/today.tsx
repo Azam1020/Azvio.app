@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -51,6 +52,7 @@ export default function TodayScreen() {
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', due_date: '', priority: 'normal' as Task['priority'] });
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const [stats, setStats] = useState({ completed: 0, pending: 0, completion_rate: 0 });
   const [motivation, setMotivation] = useState('');
@@ -108,6 +110,7 @@ export default function TodayScreen() {
   );
 
   const openAdd = () => {
+    setEditingTask(null);
     setForm({ title: '', description: '', due_date: '', priority: 'normal' });
     setModal(true);
   };
@@ -119,8 +122,13 @@ export default function TodayScreen() {
     }
     setSaving(true);
     try {
-      await api('/tasks', { method: 'POST', body: JSON.stringify(form) });
+      if (editingTask) {
+        await api(`/tasks/${editingTask.id}`, { method: 'PUT', body: JSON.stringify(form) });
+      } else {
+        await api('/tasks', { method: 'POST', body: JSON.stringify(form) });
+      }
       setModal(false);
+      setEditingTask(null);
       load();
     } catch (e: any) {
       Alert.alert('تعذّر الحفظ', e?.message || 'حدث خطأ');
@@ -138,8 +146,44 @@ export default function TodayScreen() {
     }
   };
 
+  const deleteTask = async (task: Task) => {
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    Alert.alert('حذف المهمة', `حذف "${task.title}"؟`, [
+      { text: 'إلغاء', style: 'cancel' },
+      {
+        text: 'حذف',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api(`/tasks/${task.id}`, { method: 'DELETE' });
+            load();
+          } catch (e: any) {
+            Alert.alert('تعذّر الحذف', e?.message || 'حدث خطأ');
+          }
+        },
+      },
+    ]);
+  };
+
+  const openEditTask = (task: Task) => {
+    setEditingTask(task);
+    setForm({
+      title: task.title,
+      description: task.description || '',
+      due_date: task.due_date || '',
+      priority: task.priority,
+    });
+    setModal(true);
+  };
+
   const renderTask = (task: Task) => (
-    <View key={task.id} style={styles.card}>
+    <TouchableOpacity
+      key={task.id}
+      style={styles.card}
+      onPress={() => openEditTask(task)}
+      onLongPress={() => deleteTask(task)}
+      activeOpacity={0.7}
+    >
       <TouchableOpacity style={styles.checkBtn} onPress={() => markDone(task)}>
         <Ionicons name="ellipse-outline" size={22} color={C.brand} />
       </TouchableOpacity>
@@ -166,7 +210,10 @@ export default function TodayScreen() {
           </View>
         </View>
       </View>
-    </View>
+      <TouchableOpacity onPress={() => deleteTask(task)} hitSlop={8} style={{ padding: 4 }}>
+        <Ionicons name="trash-outline" size={18} color={C.muted} />
+      </TouchableOpacity>
+    </TouchableOpacity>
   );
 
   const totalCount = groups.overdue.length + groups.today.length + groups.upcoming.length;
@@ -260,7 +307,16 @@ export default function TodayScreen() {
         )}
       </ScrollView>
 
-      <AppModal visible={modal} title="مهمة جديدة" onClose={() => setModal(false)} onSave={save} saving={saving}>
+      <AppModal
+        visible={modal}
+        title={editingTask ? 'تعديل المهمة' : 'مهمة جديدة'}
+        onClose={() => {
+          setModal(false);
+          setEditingTask(null);
+        }}
+        onSave={save}
+        saving={saving}
+      >
         <Field label="عنوان المهمة" value={form.title} onChangeText={(v) => setForm({ ...form, title: v })} placeholder="مثال: مونتاج فيديو فلة الرياض" />
         <Field
           label="تفاصيل (اختياري)"
