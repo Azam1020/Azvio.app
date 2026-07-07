@@ -19,6 +19,7 @@ export type Category = {
   service_type: string;
   description?: string;
   source?: string;
+  base_price?: number;
 };
 
 export function openWhatsApp(phone: string) {
@@ -32,8 +33,11 @@ export function openWhatsApp(phone: string) {
 export const listCategories = (service_type?: string): Promise<Category[]> =>
   api(`/categories${service_type ? `?service_type=${encodeURIComponent(service_type)}` : ''}`);
 
-export const createCategory = (data: { name: string; service_type: string; description?: string }) =>
+export const createCategory = (data: { name: string; service_type: string; description?: string; base_price?: number }) =>
   api('/categories', { method: 'POST', body: JSON.stringify({ ...data, source: 'manual' }) });
+
+export const updateCategory = (id: string, data: { name?: string; service_type?: string; description?: string; base_price?: number }) =>
+  api(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 
 export const deleteCategory = (id: string) => api(`/categories/${id}`, { method: 'DELETE' });
 

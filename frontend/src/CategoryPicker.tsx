@@ -21,11 +21,13 @@ export function CategoryPicker({
   value,
   onChange,
   label = 'الفئة الفرعية',
+  onPriceHint,
 }: {
   serviceType: string; // drone|editing|both
   value: string;
   onChange: (v: string) => void;
   label?: string;
+  onPriceHint?: (price: number) => void; // يُستدعى بسعر الفئة الافتراضي عند اختيارها (طلب #16: ربط الفئة بالتسعير)
 }) {
   const parentType = serviceType === 'both' ? 'drone' : serviceType;
   const [cats, setCats] = useState<Category[]>([]);
@@ -34,6 +36,7 @@ export function CategoryPicker({
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [newPrice, setNewPrice] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -64,9 +67,11 @@ export function CategoryPicker({
         name: newName.trim(),
         service_type: parentType,
         description: newDesc.trim(),
+        base_price: parseFloat(newPrice) || 0,
       });
       setNewName('');
       setNewDesc('');
+      setNewPrice('');
       await load();
       onChange(added.name);
     } catch {}
@@ -102,7 +107,11 @@ export function CategoryPicker({
           return (
             <TouchableOpacity
               key={c.id}
-              onPress={() => onChange(active ? '' : c.name)}
+              onPress={() => {
+                const next = active ? '' : c.name;
+                onChange(next);
+                if (!active && c.base_price) onPriceHint?.(c.base_price);
+              }}
               style={[styles.chip, active && styles.chipActive]}
               testID={`cat-chip-${c.name}`}
             >
@@ -129,6 +138,13 @@ export function CategoryPicker({
           onChangeText={setNewDesc}
           placeholder="اذكر متى تُستخدم هذه الفئة أو تفاصيل خاصة"
           multiline
+        />
+        <Field
+          label="السعر الافتراضي (اختياري)"
+          value={newPrice}
+          onChangeText={setNewPrice}
+          placeholder="مثال: 1500"
+          keyboardType="numeric"
         />
         <TouchableOpacity
           style={[styles.primaryBtn, saving && { opacity: 0.6 }]}
@@ -187,6 +203,7 @@ export function CategoryPicker({
               <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
                 {c.source === 'sanad' && <Ionicons name="sparkles" size={11} color={C.brand} />}
                 <Text style={styles.existingName}>{c.name}</Text>
+                {!!c.base_price && <Text style={styles.existingPrice}>{c.base_price} ر.س</Text>}
               </View>
               {!!c.description && <Text style={styles.existingDesc}>{c.description}</Text>}
             </View>
@@ -268,4 +285,5 @@ const styles = StyleSheet.create({
   },
   existingName: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface },
   existingDesc: { fontFamily: F.regular, fontSize: 11, color: C.muted, marginTop: 2, textAlign: 'right' },
+  existingPrice: { fontFamily: F.bold, fontSize: 11, color: C.brand },
 });

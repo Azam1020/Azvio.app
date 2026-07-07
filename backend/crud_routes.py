@@ -274,12 +274,14 @@ class CategoryCreate(BaseModel):
     service_type: str = "drone"  # drone | editing
     description: str = ""  # hidden note (Sanad-only context)
     source: str = "manual"  # manual | sanad
+    base_price: float = 0  # سعر افتراضي لهذي الفئة — يُستخدم كنقطة بداية بالتسعير والفواتير
 
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
     service_type: Optional[str] = None
     description: Optional[str] = None
+    base_price: Optional[float] = None
 
 
 @router.get("/categories")
