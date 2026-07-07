@@ -23,6 +23,7 @@ from communication import router as communication_router
 from pricing import router as pricing_router
 from production import router as production_router
 from insights import router as insights_router
+from services import router as services_router
 
 app = FastAPI(title="AZVIO API")
 
@@ -45,6 +46,7 @@ app.include_router(communication_router, prefix="/api")
 app.include_router(pricing_router, prefix="/api")
 app.include_router(production_router, prefix="/api")
 app.include_router(insights_router, prefix="/api")
+app.include_router(services_router, prefix="/api")
 
 
 @app.get("/api/")
