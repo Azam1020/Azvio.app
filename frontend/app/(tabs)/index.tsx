@@ -308,6 +308,13 @@ export default function Dashboard() {
               <Ionicons name="download-outline" size={20} color={C.brand} />
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => router.push('/settings')}
+            testID="header-settings-btn"
+          >
+            <Ionicons name="settings-outline" size={20} color={C.onSurface2} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerBtn} onPress={handleLogout} testID="logout-btn">
             <Ionicons name="log-out-outline" size={20} color={C.onSurface2} />
           </TouchableOpacity>
