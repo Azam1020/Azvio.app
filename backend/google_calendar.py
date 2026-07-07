@@ -28,6 +28,7 @@ APP_OAUTH_REDIRECT_URI = os.getenv("APP_OAUTH_REDIRECT_URI", "")
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/tasks",
     "https://www.googleapis.com/auth/userinfo.email",
     "openid",
 ]
