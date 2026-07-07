@@ -85,6 +85,72 @@ async def my_today(user: dict = Depends(get_current_user)):
     return {"overdue": overdue, "today": due_today, "upcoming": upcoming}
 
 
+async def _try_sync_task_to_google(user_id: str, task_doc: dict) -> dict:
+    """لو المستخدم عنده حساب Google مربوط وقائمة مهام مختارة، ننشئ نفس المهمة هناك
+    ونرجّع معلومات الربط (google_task_id...) عشان نحفظها بالمهمة المحلية.
+    لو ما فيه حساب مربوط أو صار خطأ، نرجّع {} بهدوء — إنشاء المهمة محلياً ما يفشل أبداً بسبب Google."""
+    try:
+        account = await db.google_accounts.find_one({"user_id": user_id}, {"_id": 0, "email": 1})
+        if not account:
+            return {}
+        from google_calendar import _get_valid_credentials
+        from google_tasks import _get_selected_tasklist_id, _sync_insert_task
+        from fastapi.concurrency import run_in_threadpool
+
+        access_token, _ = await _get_valid_credentials(user_id, account["email"])
+        tasklist_id = await _get_selected_tasklist_id(user_id, account["email"])
+        body = {"title": task_doc.get("title", ""), "notes": task_doc.get("description", "")}
+        if task_doc.get("due_date"):
+            body["due"] = f"{task_doc['due_date']}T00:00:00.000Z"
+        created = await run_in_threadpool(_sync_insert_task, access_token, tasklist_id, body)
+        return {
+            "google_task_id": created["id"],
+            "google_tasklist_id": tasklist_id,
+            "google_account": account["email"],
+        }
+    except Exception:
+        return {}
+
+
+async def _try_update_task_on_google(user_id: str, task: dict, updates: dict) -> None:
+    """لو المهمة مرتبطة بمهمة Google (عندها google_task_id)، نعكس التعديل هناك أيضاً."""
+    if not task.get("google_task_id"):
+        return
+    try:
+        from google_calendar import _get_valid_credentials
+        from google_tasks import _sync_update_task
+        from fastapi.concurrency import run_in_threadpool
+
+        access_token, _ = await _get_valid_credentials(user_id, task["google_account"])
+        patch = {}
+        if "title" in updates:
+            patch["title"] = updates["title"]
+        if "description" in updates:
+            patch["notes"] = updates["description"]
+        if "due_date" in updates:
+            patch["due"] = f"{updates['due_date']}T00:00:00.000Z" if updates["due_date"] else None
+        if "status" in updates:
+            patch["status"] = "completed" if updates["status"] == "done" else "needsAction"
+        if patch:
+            await run_in_threadpool(_sync_update_task, access_token, task["google_tasklist_id"], task["google_task_id"], patch)
+    except Exception:
+        pass  # المهمة المحلية اتعدلت بنجاح؛ فشل مزامنة قوقل ما يوقف العملية
+
+
+async def _try_delete_task_on_google(user_id: str, task: dict) -> None:
+    if not task.get("google_task_id"):
+        return
+    try:
+        from google_calendar import _get_valid_credentials
+        from google_tasks import _sync_delete_task
+        from fastapi.concurrency import run_in_threadpool
+
+        access_token, _ = await _get_valid_credentials(user_id, task["google_account"])
+        await run_in_threadpool(_sync_delete_task, access_token, task["google_tasklist_id"], task["google_task_id"])
+    except Exception:
+        pass
+
+
 @router.post("/tasks")
 async def create_task(body: TaskCreate, user: dict = Depends(get_current_user)):
     doc = body.model_dump()
@@ -101,6 +167,9 @@ async def create_task(body: TaskCreate, user: dict = Depends(get_current_user)):
         "created_at": now_iso(),
         "updated_at": now_iso(),
     })
+    # مزامنة تلقائية مع Google Tasks — أي مهمة تضيفها من أي زر بالتطبيق تنعكس بقوقل
+    google_link = await _try_sync_task_to_google(user["user_id"], doc)
+    doc.update(google_link)
     await db.tasks.insert_one(dict(doc))
     return doc
 
@@ -119,6 +188,8 @@ async def update_task(task_id: str, body: TaskUpdate, user: dict = Depends(get_c
         updates.pop("assignee_id", None)
     updates["updated_at"] = now_iso()
     await db.tasks.update_one({"id": task_id}, {"$set": updates})
+    # مزامنة التعديل مع Google Tasks لو المهمة مرتبطة (سواء عدّلتها بالتطبيق أو أضفتها أصلاً من قوقل)
+    await _try_update_task_on_google(user["user_id"], task, updates)
     return await db.tasks.find_one({"id": task_id}, {"_id": 0})
 
 
@@ -143,6 +214,7 @@ async def delete_task(task_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="المهمة غير موجودة")
     if not _can_manage(user) and task.get("created_by") != user["user_id"]:
         raise HTTPException(status_code=403, detail="لا تملك صلاحية حذف هذه المهمة")
+    await _try_delete_task_on_google(user["user_id"], task)
     await db.tasks.delete_one({"id": task_id})
     return {"ok": True}
 
