@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
-import { AudioModule, RecordingPresets, useAudioRecorder } from 'expo-audio';
+import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import { api, apiUpload } from '@/src/api';
 import { confirmAsync } from '@/src/ui';
 import { C, F, R, shadow } from '@/src/theme';
@@ -150,6 +150,8 @@ export default function SanadScreen() {
       return;
     }
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // iOS يرفض التسجيل ما لم يُفعَّل وضع التسجيل صراحة أولاً (RecordingDisabledException)
+    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
     await recorder.prepareToRecordAsync();
     recorder.record();
     setIsRecording(true);
@@ -162,6 +164,7 @@ export default function SanadScreen() {
     clearInterval(recTimerRef.current);
     setIsRecording(false);
     await recorder.stop();
+    await setAudioModeAsync({ allowsRecording: false });
     const uri = recorder.uri;
     if (!send || !uri) return;
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
