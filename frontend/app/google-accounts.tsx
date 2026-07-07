@@ -92,7 +92,7 @@ export default function GoogleAccountsScreen() {
     setTasklists([]);
     try {
       const [calRes, taskRes] = await Promise.all([
-        api(`/calendar/list?account=${encodeURIComponent(email)}`).catch(() => null),
+        api(`/google/calendar/list?account=${encodeURIComponent(email)}`).catch(() => null),
         api(`/gtasks/lists?account=${encodeURIComponent(email)}`).catch(() => null),
       ]);
       if (calRes) {
@@ -114,7 +114,7 @@ export default function GoogleAccountsScreen() {
     if (next.length === 0) return; // لازم تقويم واحد على الأقل يفضل مختار
     setSelectedCalendars(next);
     try {
-      await api(`/calendar/select?account=${encodeURIComponent(email)}&calendar_ids=${encodeURIComponent(next.join(','))}`, {
+      await api(`/google/calendar/select?account=${encodeURIComponent(email)}&calendar_ids=${encodeURIComponent(next.join(','))}`, {
         method: 'POST',
       });
     } catch (e: any) {
