@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { api, getToken } from '@/src/api';
@@ -50,6 +50,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function InvoicesScreen() {
+  const router = useRouter();
   const [filter, setFilter] = useState<'all' | 'quote' | 'invoice'>('all');
   const [docs, setDocs] = useState<Doc[]>([]);
   const [modal, setModal] = useState(false);
@@ -276,7 +277,15 @@ export default function InvoicesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.surface2 }}>
-      <ScreenHeader title="الفواتير وعروض الأسعار" canBack />
+      <ScreenHeader
+        title="الفواتير وعروض الأسعار"
+        canBack
+        right={
+          <TouchableOpacity onPress={() => router.push('/invoice-design')} hitSlop={8}>
+            <Ionicons name="color-palette-outline" size={22} color={C.onSurface} />
+          </TouchableOpacity>
+        }
+      />
       <View style={styles.topBar}>
         <Chips
           options={[
