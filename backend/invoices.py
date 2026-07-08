@@ -248,6 +248,32 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
     right = width - 50
     y = height - 60
 
+    # الخلفية المخصصة (لو مرفوعة) — تُرسم أول شي عشان تكون خلف كل المحتوى، بشفافية خفيفة
+    # عشان النص يفضل مقروء فوقها (طلب: "احط فيه الخلفية اللي أبيها")
+    background_url = settings.get("background_url", "")
+    if background_url:
+        try:
+            import urllib.request
+            from reportlab.lib.utils import ImageReader
+            from PIL import Image as PILImage
+
+            opacity = max(0.0, min(1.0, settings.get("background_opacity", 0.15)))
+            with urllib.request.urlopen(background_url, timeout=5) as resp:
+                bg_raw = resp.read()
+
+            # نمزج الشفافية فعلياً بـ PIL (بدل الاعتماد على دعم reportlab المحدود للشفافية)
+            bg_img = PILImage.open(io.BytesIO(bg_raw)).convert("RGBA")
+            white_bg = PILImage.new("RGBA", bg_img.size, (255, 255, 255, 255))
+            faded = PILImage.blend(white_bg, bg_img, opacity).convert("RGB")
+            bg_buf = io.BytesIO()
+            faded.save(bg_buf, format="PNG")
+            bg_buf.seek(0)
+
+            bg_reader = ImageReader(bg_buf)
+            c.drawImage(bg_reader, 0, 0, width=width, height=height)
+        except Exception:
+            pass  # فشل تحميل الخلفية ما يوقف توليد الفاتورة نفسها
+
     # الشعار المخصص (لو مرفوع) — يظهر أعلى يسار الصفحة
     logo_url = settings.get("logo_url", "")
     if logo_url:
@@ -576,12 +602,14 @@ async def get_design_settings():
     doc = doc or {}
     return {
         "default_design": doc.get("default_design", "brand"),
-        "default_apply_vat": doc.get("default_apply_vat", True),
+        "default_apply_vat": doc.get("default_apply_vat", False),
         "default_vat_rate": doc.get("default_vat_rate", 15),
         "show_sub_category": doc.get("show_sub_category", True),
         "show_notes": doc.get("show_notes", True),
         "accent_color": doc.get("accent_color", ""),
         "logo_url": doc.get("logo_url", ""),
+        "background_url": doc.get("background_url", ""),
+        "background_opacity": doc.get("background_opacity", 0.15),
     }
 
 
@@ -646,6 +674,65 @@ async def remove_invoice_logo():
         {"$set": {"logo_url": "", "logo_path": "", "updated_at": datetime.now().isoformat()}},
     )
     return {"ok": True}
+
+
+@router.post("/invoices/upload-background", dependencies=[Depends(get_current_admin)])
+async def upload_invoice_background(file: UploadFile = File(...)):
+    """رفع خلفية/قالب كامل مخصص يظهر خلف كل فاتورة وعرض سعر (طلب: خلفية أختارها بنفسي) — للأدمن فقط."""
+    from supabase_storage import is_configured, _upload_sync, _signed_url_sync
+    import uuid as _uuid
+
+    if not is_configured():
+        raise HTTPException(status_code=400, detail="التخزين (Supabase) غير مفعّل بعد")
+
+    allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="الصيغة يجب تكون PNG أو JPEG أو WEBP")
+
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="حجم الصورة كبير — الحد الأقصى 5 ميجابايت")
+
+    ext = (file.filename or "background.png").split(".")[-1]
+    path = f"invoice-backgrounds/business/{_uuid.uuid4().hex}.{ext}"
+
+    try:
+        from fastapi.concurrency import run_in_threadpool
+        await run_in_threadpool(_upload_sync, path, data, file.content_type)
+        url = await run_in_threadpool(_signed_url_sync, path, 60 * 60 * 24 * 365 * 5)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل رفع الخلفية: {e}")
+
+    await db.business_settings.update_one(
+        {"id": "invoice_design"},
+        {"$set": {"background_url": url, "background_path": path, "updated_at": datetime.now().isoformat()}},
+        upsert=True,
+    )
+    return {"ok": True, "background_url": url}
+
+
+@router.delete("/invoices/upload-background", dependencies=[Depends(get_current_admin)])
+async def remove_invoice_background():
+    await db.business_settings.update_one(
+        {"id": "invoice_design"},
+        {"$set": {"background_url": "", "background_path": "", "updated_at": datetime.now().isoformat()}},
+    )
+    return {"ok": True}
+
+
+class BackgroundOpacityUpdate(BaseModel):
+    opacity: float = 0.15  # 0 (شفاف تماماً) إلى 1 (كامل الوضوح) — نخليها فاتحة افتراضياً عشان النص يفضل مقروء فوقها
+
+
+@router.put("/invoices/background-opacity", dependencies=[Depends(get_current_admin)])
+async def update_background_opacity(body: BackgroundOpacityUpdate):
+    opacity = max(0.0, min(1.0, body.opacity))
+    await db.business_settings.update_one(
+        {"id": "invoice_design"},
+        {"$set": {"background_opacity": opacity, "updated_at": datetime.now().isoformat()}},
+        upsert=True,
+    )
+    return {"ok": True, "opacity": opacity}
 
 
 from datetime import timedelta

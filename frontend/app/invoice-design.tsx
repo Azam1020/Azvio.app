@@ -21,6 +21,7 @@ const PRESET_COLORS = ['#3E9194', '#8E44AD', '#C0392B', '#16808A', '#B8860B', '#
 export default function InvoiceDesignSettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadingBg, setUploadingBg] = useState(false);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({
     default_design: 'brand',
@@ -30,6 +31,8 @@ export default function InvoiceDesignSettingsScreen() {
     show_notes: true,
     accent_color: '',
     logo_url: '',
+    background_url: '',
+    background_opacity: 0.15,
   });
 
   const load = useCallback(async () => {
@@ -44,6 +47,8 @@ export default function InvoiceDesignSettingsScreen() {
         show_notes: r.show_notes ?? true,
         accent_color: r.accent_color || '',
         logo_url: r.logo_url || '',
+        background_url: r.background_url || '',
+        background_opacity: r.background_opacity ?? 0.15,
       });
     } catch {}
     setLoading(false);
@@ -96,6 +101,56 @@ export default function InvoiceDesignSettingsScreen() {
     } catch (e: any) {
       Alert.alert('خطأ', e?.message || 'تعذّر الحذف');
     }
+  };
+
+  const pickAndUploadBackground = async () => {
+    try {
+      const ImagePicker = await import('expo-image-picker');
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('صلاحية مطلوبة', 'نحتاج صلاحية الوصول للصور');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const asset = result.assets[0];
+      setUploadingBg(true);
+
+      const fd = new FormData();
+      fd.append('file', {
+        uri: asset.uri,
+        name: asset.fileName || 'background.png',
+        type: asset.mimeType || 'image/png',
+      } as any);
+
+      const r = await apiUpload('/invoices/upload-background', fd);
+      setSettings((s) => ({ ...s, background_url: r.background_url }));
+      Alert.alert('تم', '✅ تم رفع الخلفية بنجاح');
+    } catch (e: any) {
+      Alert.alert('تعذّر الرفع', e?.message || 'حدث خطأ');
+    }
+    setUploadingBg(false);
+  };
+
+  const removeBackground = async () => {
+    if (!(await confirmAsync('حذف الخلفية', 'حذف الخلفية المرفوعة؟'))) return;
+    try {
+      await api('/invoices/upload-background', { method: 'DELETE' });
+      setSettings((s) => ({ ...s, background_url: '' }));
+    } catch (e: any) {
+      Alert.alert('خطأ', e?.message || 'تعذّر الحذف');
+    }
+  };
+
+  const updateOpacity = async (opacity: number) => {
+    setSettings((s) => ({ ...s, background_opacity: opacity }));
+    try {
+      await api('/invoices/background-opacity', { method: 'PUT', body: JSON.stringify({ opacity }) });
+    } catch {}
   };
 
   const save = async () => {
@@ -156,6 +211,53 @@ export default function InvoiceDesignSettingsScreen() {
                   <Ionicons name="cloud-upload-outline" size={28} color={C.brand} />
                   <Text style={styles.uploadText}>ارفع شعار مخصص</Text>
                   <Text style={styles.uploadHint}>PNG أو JPEG — حتى 3 ميجابايت</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* الخلفية المخصصة (طلب: احط فيه الخلفية اللي أبيها) */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>الخلفية</Text>
+          <Text style={styles.sectionHint}>صورة خلفية كاملة خلف محتوى الفاتورة (شعار مائي، تصميم مخصص...)</Text>
+
+          {settings.background_url ? (
+            <View style={styles.logoPreviewBox}>
+              <Image source={{ uri: settings.background_url }} style={styles.bgPreview} resizeMode="cover" />
+              <View style={styles.logoActions}>
+                <TouchableOpacity style={styles.changeLogoBtn} onPress={pickAndUploadBackground} disabled={uploadingBg}>
+                  <Text style={styles.changeLogoText}>تغيير</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.removeLogoBtn} onPress={removeBackground}>
+                  <Ionicons name="trash-outline" size={16} color={C.error} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.chipsLabel, { marginTop: 14 }]}>درجة الوضوح</Text>
+              <View style={styles.colorRow}>
+                {[0.08, 0.15, 0.25, 0.4].map((op) => (
+                  <TouchableOpacity
+                    key={op}
+                    style={[styles.opacityChip, settings.background_opacity === op && styles.opacityChipActive]}
+                    onPress={() => updateOpacity(op)}
+                  >
+                    <Text style={[styles.opacityChipText, settings.background_opacity === op && styles.opacityChipTextActive]}>
+                      {Math.round(op * 100)}٪
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.uploadBox} onPress={pickAndUploadBackground} disabled={uploadingBg}>
+              {uploadingBg ? (
+                <ActivityIndicator color={C.brand} />
+              ) : (
+                <>
+                  <Ionicons name="image-outline" size={28} color={C.brand} />
+                  <Text style={styles.uploadText}>ارفع خلفية مخصصة</Text>
+                  <Text style={styles.uploadHint}>PNG أو JPEG — حتى 5 ميجابايت</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -272,6 +374,18 @@ const styles = StyleSheet.create({
   colorSwatch: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
   colorSwatchActive: { borderColor: C.onSurface },
   colorSwatchDefault: { backgroundColor: C.surface2, borderWidth: 1, borderColor: C.divider },
+  bgPreview: { width: '100%', height: 120, borderRadius: R.sm, backgroundColor: C.surface2 },
+  opacityChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: R.md,
+    backgroundColor: C.surface2,
+    borderWidth: 1,
+    borderColor: C.divider,
+  },
+  opacityChipActive: { backgroundColor: C.brand, borderColor: C.brand },
+  opacityChipText: { fontFamily: F.semibold, fontSize: 12, color: C.onSurface },
+  opacityChipTextActive: { color: '#FFF' },
   defaultColorText: { fontFamily: F.regular, fontSize: 9, color: C.muted },
   chipsLabel: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, textAlign: 'right', marginBottom: 6, marginTop: 4 },
   switchRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginTop: 14 },
