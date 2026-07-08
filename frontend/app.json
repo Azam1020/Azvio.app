@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "co.azvio.app",
+      "bundleIdentifier": "com.aaa1122.azvioapp",
       "infoPlist": {
         "NSFaceIDUsageDescription": "استخدم بصمة الوجه لفتح تطبيق AZVIO بسرعة وأمان",
         "NSMicrophoneUsageDescription": "يحتاج سند إذن الميكروفون لتسجيل رسائلك الصوتية والرد عليك",
