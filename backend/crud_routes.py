@@ -79,6 +79,23 @@ async def list_clients(search: str = ""):
     return await db.clients.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 
+async def link_contact_and_flag_repeat(phone: str) -> tuple[str, int]:
+    """يبحث عن عملاء بنفس الجوال، يرجّع (contact_id يُستخدم للعميل الجديد، عدد المشاريع السابقة).
+    يُستخدم من أي مسار ينشئ عميل (الإضافة اليدوية، أو تحليل الواتساب) عشان الربط يصير موحّد
+    بغض النظر عن المسار (طلب #8)."""
+    if not phone:
+        return uuid.uuid4().hex, 0
+    existing = await db.clients.find({"phone": phone}, {"_id": 0, "contact_id": 1, "id": 1}).to_list(100)
+    if not existing:
+        return uuid.uuid4().hex, 0
+    contact_id = next((e.get("contact_id") for e in existing if e.get("contact_id")), None)
+    if not contact_id:
+        contact_id = uuid.uuid4().hex
+        old_ids = [e["id"] for e in existing]
+        await db.clients.update_many({"id": {"$in": old_ids}}, {"$set": {"contact_id": contact_id}})
+    return contact_id, len(existing)
+
+
 @router.post("/clients")
 async def create_client(body: ClientCreate):
     doc = body.model_dump()
@@ -89,8 +106,48 @@ async def create_client(body: ClientCreate):
         "created_at": now_iso(),
         "updated_at": now_iso(),
     })
+
+    contact_id, sibling_count = await link_contact_and_flag_repeat(doc.get("phone", ""))
+    doc["contact_id"] = contact_id
+
     await db.clients.insert_one(dict(doc))
+
+    # المرة الثالثة فأكثر = عميل متكرر — نسجّلها كملاحظة تلقائية بسجل النشاط عشان
+    # "سند يعرف على طول" (طلب #8) بدون ما يحتاج فحص يدوي كل مرة.
+    if sibling_count >= 2:  # هذا العميل الجديد = الثالث أو أكثر
+        await db.clients.update_one(
+            {"id": doc["id"]},
+            {"$push": {"logs": {
+                "id": uuid.uuid4().hex,
+                "kind": "note",
+                "text": f"🔁 عميل متكرر — هذا مشروعه رقم {sibling_count + 1} معنا. سند يتابعه تلقائياً.",
+                "created_at": now_iso(),
+                "auto_generated": True,
+            }}},
+        )
+
     return doc
+
+
+@router.get("/clients/{client_id}/history")
+async def get_client_history(client_id: str):
+    """كل مشاريع نفس العميل (بالهوية الموحّدة contact_id) — يوضح هل عنده أكثر من خدمة
+    وترتيبها الزمني (طلب #8)."""
+    client = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=404, detail="العميل غير موجود")
+
+    contact_id = client.get("contact_id")
+    if not contact_id:
+        return {"contact_id": None, "total_projects": 1, "is_repeat_client": False, "projects": [client]}
+
+    siblings = await db.clients.find({"contact_id": contact_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return {
+        "contact_id": contact_id,
+        "total_projects": len(siblings),
+        "is_repeat_client": len(siblings) >= 3,
+        "projects": siblings,
+    }
 
 
 @router.get("/clients/{client_id}/whatsapp-history")

@@ -249,7 +249,9 @@ async def apply_analysis(analysis_id: str, body: ApplyRequest, user=Depends(get_
                 updates["updated_at"] = now_iso()
                 await db.clients.update_one({"id": client_id}, {"$set": updates})
         elif client_info.get("name"):
+            from crud_routes import link_contact_and_flag_repeat
             new_id = uuid.uuid4().hex
+            contact_id, sibling_count = await link_contact_and_flag_repeat(client_info.get("phone", ""))
             client_doc = {
                 "id": new_id,
                 "name": client_info["name"],
@@ -261,7 +263,18 @@ async def apply_analysis(analysis_id: str, body: ApplyRequest, user=Depends(get_
                 "drive_link": "",
                 "source": client_info.get("source") or "واتساب",
                 "notes": (a.get("summary") or "")[:400],
-                "logs": [],
+                "contact_id": contact_id,
+                "portal_token": uuid.uuid4().hex[:16],
+                "logs": (
+                    [{
+                        "id": uuid.uuid4().hex,
+                        "kind": "note",
+                        "text": f"🔁 عميل متكرر — هذا مشروعه رقم {sibling_count + 1} معنا. سند يتابعه تلقائياً.",
+                        "created_at": now_iso(),
+                        "auto_generated": True,
+                    }]
+                    if sibling_count >= 2 else []
+                ),
                 "created_at": now_iso(),
                 "updated_at": now_iso(),
             }

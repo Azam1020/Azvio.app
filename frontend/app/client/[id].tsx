@@ -60,6 +60,7 @@ export default function ClientDetail() {
   const [form, setForm] = useState<any>({});
 
   const [waHistory, setWaHistory] = useState<any[]>([]);
+  const [clientHistory, setClientHistory] = useState<{ total_projects: number; is_repeat_client: boolean; projects: any[] } | null>(null);
   const load = useCallback(async () => {
     try {
       setClient(await api(`/clients/${id}`));
@@ -68,6 +69,12 @@ export default function ClientDetail() {
         setWaHistory(r?.items ?? []);
       } catch {
         setWaHistory([]);
+      }
+      try {
+        const h = await api(`/clients/${id}/history`);
+        setClientHistory(h);
+      } catch {
+        setClientHistory(null);
       }
     } catch {}
   }, [id]);
@@ -379,6 +386,32 @@ export default function ClientDetail() {
             )}
           </TouchableOpacity>
 
+          {clientHistory && clientHistory.total_projects > 1 && (
+            <View style={styles.repeatBox}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="repeat" size={16} color={C.brand} />
+                <Text style={styles.repeatTitle}>
+                  {clientHistory.is_repeat_client ? '🔁 عميل متكرر — ' : ''}
+                  {clientHistory.total_projects} مشاريع مع هذا العميل
+                </Text>
+              </View>
+              {clientHistory.projects
+                .filter((p: any) => p.id !== id)
+                .map((p: any) => (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={styles.repeatItem}
+                    onPress={() => router.push(`/client/${p.id}`)}
+                  >
+                    <Text style={styles.repeatItemText}>
+                      {p.sub_category || p.service_type} — {(p.created_at || '').slice(0, 10)}
+                    </Text>
+                    <Ionicons name="chevron-back" size={14} color={C.muted} />
+                  </TouchableOpacity>
+                ))}
+            </View>
+          )}
+
           {waHistory.length > 0 && (
             <View style={{ marginTop: 14, marginBottom: 6 }}>
               <Text style={styles.waHistoryTitle}>محادثات واتساب مرتبطة ({waHistory.length})</Text>
@@ -574,6 +607,10 @@ const styles = StyleSheet.create({
   uploadText: { fontFamily: F.bold, fontSize: 12, color: C.brand },
   emptyLogs: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'center', paddingVertical: 12 },
   waHistoryTitle: { fontFamily: F.bold, fontSize: 12, color: C.onSurface2, textAlign: 'right', marginBottom: 8 },
+  repeatBox: { backgroundColor: C.brandSoft, borderRadius: R.md, padding: 12, marginTop: 14, marginBottom: 6 },
+  repeatTitle: { fontFamily: F.bold, fontSize: 12, color: C.onSurface, marginBottom: 8 },
+  repeatItem: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.divider },
+  repeatItemText: { fontFamily: F.regular, fontSize: 12, color: C.onSurface, textAlign: 'right' },
   waHistoryItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
   waHistoryLabel: { fontFamily: F.semibold, fontSize: 12, color: C.onSurface, textAlign: 'right' },
   waHistoryDate: { fontFamily: F.regular, fontSize: 10, color: C.muted, textAlign: 'right', marginTop: 2 },
