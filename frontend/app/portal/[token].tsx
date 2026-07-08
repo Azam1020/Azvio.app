@@ -19,13 +19,15 @@ type PortalData = {
   status: string;
   drive_link?: string | null;
   has_signature: boolean;
-  invoice?: {
+  invoices?: Array<{
     id: string;
-    amount: number;
+    display_number: string;
+    is_quote: boolean;
+    total: number;
     status: string;
-    due_date: string;
     payment_link: string;
-  };
+    created_at: string;
+  }>;
   files?: Array<{
     name: string;
     download_link: string;
@@ -35,6 +37,7 @@ type PortalData = {
     text: string;
     created_at: string;
   }>;
+  project_id?: string;
 };
 
 export default function ClientPortalScreen() {
@@ -132,40 +135,64 @@ export default function ClientPortalScreen() {
         </TouchableOpacity>
       )}
 
-      {/* الفاتورة */}
-      {data.invoice && (
+      {/* الفواتير وعروض السعر */}
+      {!!data.invoices?.length && (
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>الفاتورة</Text>
-          <View style={styles.invoiceRow}>
-            <View>
-              <Text style={styles.invoiceLabel}>المبلغ</Text>
-              <Text style={styles.invoiceAmount}>{data.invoice.amount} ر.س</Text>
+          <Text style={styles.sectionTitle}>{data.invoices.length > 1 ? 'الفواتير' : 'الفاتورة'}</Text>
+          {data.invoices.map((inv, idx) => (
+            <View key={inv.id} style={idx > 0 ? styles.invoiceDivider : undefined}>
+              <View style={styles.invoiceRow}>
+                <View>
+                  <Text style={styles.invoiceLabel}>
+                    {inv.display_number} {inv.is_quote ? '(عرض سعر)' : ''}
+                  </Text>
+                  <Text style={styles.invoiceAmount}>{fmt(inv.total)} ر.س</Text>
+                </View>
+                <View>
+                  <Text style={styles.invoiceLabel}>الحالة</Text>
+                  <Text
+                    style={[
+                      styles.invoiceStatus,
+                      {
+                        color:
+                          inv.status === 'paid' ? '#4CAF50' : inv.status === 'approved' || inv.status === 'sent' ? '#FF9800' : C.muted,
+                      },
+                    ]}
+                  >
+                    {inv.status === 'paid'
+                      ? '✓ مدفوعة'
+                      : inv.status === 'approved'
+                        ? 'معتمدة'
+                        : inv.status === 'sent'
+                          ? 'أُرسلت'
+                          : 'مسوّدة'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.invoiceActions}>
+                <TouchableOpacity
+                  style={styles.downloadBtn}
+                  onPress={() =>
+                    Linking.openURL(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/portal/${token}/invoices/${inv.id}/pdf`)
+                  }
+                >
+                  <Ionicons name="download-outline" size={16} color={C.brand} />
+                  <Text style={styles.downloadBtnText}>تحميل PDF</Text>
+                </TouchableOpacity>
+
+                {!!inv.payment_link && inv.status !== 'paid' && (
+                  <TouchableOpacity
+                    style={[styles.payBtn, data.stage === 'delivered' && styles.payBtnUrgent]}
+                    onPress={() => Linking.openURL(inv.payment_link)}
+                  >
+                    <Ionicons name="card-outline" size={16} color="#FFF" />
+                    <Text style={styles.payBtnText}>ادفع الآن</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-            <View>
-              <Text style={styles.invoiceLabel}>الحالة</Text>
-              <Text
-                style={[
-                  styles.invoiceStatus,
-                  {
-                    color:
-                      data.invoice.status === 'paid'
-                        ? '#4CAF50'
-                        : data.invoice.status === 'pending'
-                          ? '#FF9800'
-                          : C.error,
-                  },
-                ]}
-              >
-                {data.invoice.status === 'paid' ? '✓ مدفوعة' : data.invoice.status === 'pending' ? '⏱ قيد الانتظار' : '⚠ متأخرة'}
-              </Text>
-            </View>
-          </View>
-          {data.invoice.payment_link && (
-            <TouchableOpacity style={styles.payBtn} onPress={() => Linking.openURL(data.invoice!.payment_link)}>
-              <Ionicons name="card-outline" size={16} color="#FFF" />
-              <Text style={styles.payBtnText}>ادفع الآن</Text>
-            </TouchableOpacity>
-          )}
+          ))}
         </View>
       )}
 
@@ -272,7 +299,12 @@ const styles = StyleSheet.create({
   invoiceLabel: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'right' },
   invoiceAmount: { fontFamily: F.bold, fontSize: 18, color: C.brand, textAlign: 'right', marginTop: 4 },
   invoiceStatus: { fontFamily: F.bold, fontSize: 14, textAlign: 'right', marginTop: 4 },
-  payBtn: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 12 },
+  invoiceDivider: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: C.divider },
+  invoiceActions: { flexDirection: 'row-reverse', gap: 10 },
+  downloadBtn: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.brandSoft, borderRadius: R.md, paddingVertical: 12 },
+  downloadBtnText: { fontFamily: F.bold, fontSize: 13, color: C.brand },
+  payBtn: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 12 },
+  payBtnUrgent: { backgroundColor: '#E67E22' },
   payBtnText: { fontFamily: F.bold, fontSize: 14, color: '#FFF' },
   fileItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
   fileName: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface, textAlign: 'right' },

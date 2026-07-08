@@ -39,6 +39,7 @@ const EMPTY_FORM = {
   show_sub_category: true,
   show_notes: true,
   design: 'brand' as 'brand' | 'minimal',
+  payment_link: '',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -55,6 +56,26 @@ export default function InvoicesScreen() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [items, setItems] = useState<Item[]>([{ description: '', amount: '' }]);
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [clientPickerOpen, setClientPickerOpen] = useState(false);
+  const [allClients, setAllClients] = useState<any[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+
+  const openClientPicker = async () => {
+    setClientPickerOpen(true);
+    if (allClients.length === 0) {
+      try {
+        setAllClients(await api('/clients'));
+      } catch {}
+    }
+  };
+
+  const pickClient = (c: any) => {
+    setSelectedClientId(c.id);
+    setForm({ ...form, client_name: c.name });
+    setClientPickerOpen(false);
+    setClientSearch('');
+  };
 
   // AI pricing helper
   const [pricingOpen, setPricingOpen] = useState(false);
@@ -99,6 +120,7 @@ export default function InvoicesScreen() {
     setForm({ ...EMPTY_FORM, is_quote: asQuote });
     setItems([{ description: '', amount: '' }]);
     setPricingResult(null);
+    setSelectedClientId('');
     setModal(true);
   };
 
@@ -192,6 +214,7 @@ export default function InvoicesScreen() {
       await api('/documents', {
         method: 'POST',
         body: JSON.stringify({
+          client_id: selectedClientId,
           client_name: form.client_name,
           service_type: form.service_type,
           sub_category: form.sub_category,
@@ -202,10 +225,12 @@ export default function InvoicesScreen() {
           show_sub_category: form.show_sub_category,
           show_notes: form.show_notes,
           design: form.design,
+          payment_link: form.payment_link,
           items: cleanItems,
         }),
       });
       setModal(false);
+      setSelectedClientId('');
       load();
     } catch (e: any) {
       Alert.alert('تعذّر الحفظ', e?.message || 'حدث خطأ');
@@ -327,7 +352,19 @@ export default function InvoicesScreen() {
         onSave={save}
         saving={saving}
       >
-        <Field label="اسم العميل" value={form.client_name} onChangeText={(v) => setForm({ ...form, client_name: v })} />
+        <Text style={styles.chipsLabel}>العميل</Text>
+        <TouchableOpacity style={styles.clientPickBtn} onPress={openClientPicker}>
+          <Ionicons name="person-circle-outline" size={18} color={C.brand} />
+          <Text style={styles.clientPickText}>
+            {form.client_name || 'اختر عميل من القائمة'}
+          </Text>
+          <Ionicons name="chevron-down" size={14} color={C.muted} />
+        </TouchableOpacity>
+        {!selectedClientId && !!form.client_name && (
+          <Text style={styles.clientWarning}>
+            ⚠️ عميل غير مربوط — الفاتورة ما راح تظهر ببوابة العميل. اختره من القائمة بدل الكتابة اليدوية.
+          </Text>
+        )}
         <Text style={styles.chipsLabel}>نوع الخدمة</Text>
         <ServiceTypeChips
           value={form.service_type}
@@ -553,12 +590,65 @@ export default function InvoicesScreen() {
         </View>
 
         <Field label="ملاحظات (اختياري)" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} multiline />
+        <Field
+          label="رابط الدفع (منصة رائد أو أي بوابة) — اختياري"
+          value={form.payment_link}
+          onChangeText={(v) => setForm({ ...form, payment_link: v })}
+          placeholder="https://..."
+          autoCapitalize="none"
+        />
+      </AppModal>
+
+      <AppModal visible={clientPickerOpen} title="اختر عميلاً" onClose={() => setClientPickerOpen(false)}>
+        <Field label="بحث" value={clientSearch} onChangeText={setClientSearch} placeholder="اسم أو جوال..." />
+        <ScrollView style={{ maxHeight: 350 }}>
+          {allClients
+            .filter(
+              (c) =>
+                !clientSearch ||
+                c.name?.includes(clientSearch) ||
+                c.phone?.includes(clientSearch)
+            )
+            .map((c) => (
+              <TouchableOpacity key={c.id} style={styles.clientOption} onPress={() => pickClient(c)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.clientOptionName}>{c.name}</Text>
+                  {!!c.phone && <Text style={styles.clientOptionPhone}>{c.phone}</Text>}
+                </View>
+                <Ionicons name="chevron-back" size={16} color={C.muted} />
+              </TouchableOpacity>
+            ))}
+          {allClients.length === 0 && <Text style={styles.emptyClients}>لا يوجد عملاء بعد</Text>}
+        </ScrollView>
       </AppModal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  clientPickBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: C.divider,
+    borderRadius: R.md,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 4,
+  },
+  clientPickText: { flex: 1, fontFamily: F.regular, fontSize: 14, color: C.onSurface, textAlign: 'right' },
+  clientWarning: { fontFamily: F.regular, fontSize: 11, color: '#E67E22', textAlign: 'right', marginBottom: 12 },
+  clientOption: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.divider,
+  },
+  clientOptionName: { fontFamily: F.semibold, fontSize: 14, color: C.onSurface, textAlign: 'right' },
+  clientOptionPhone: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'right', marginTop: 2 },
+  emptyClients: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'center', paddingVertical: 20 },
   topBar: { paddingHorizontal: 16, paddingTop: 12, backgroundColor: C.surface },
   addRow: { flexDirection: 'row-reverse', gap: 10, marginBottom: 12 },
   addBtn: {

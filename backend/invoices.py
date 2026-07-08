@@ -81,11 +81,13 @@ class DocumentCreate(BaseModel):
     show_sub_category: bool = True
     show_notes: bool = True
     design: str = "brand"  # brand (teal AZVIO) | minimal (black & white)
+    payment_link: str = ""  # رابط الدفع من منصة رائد (أو أي بوابة دفع) — يظهر للعميل ببوابته
 
 
 class DocumentUpdate(BaseModel):
     status: Optional[str] = None  # draft | sent | approved | paid
     notes: Optional[str] = None
+    payment_link: Optional[str] = None
 
 
 def _totals(items: list[dict], vat_rate: float, apply_vat: bool = True) -> dict:
@@ -131,6 +133,7 @@ async def create_document(body: DocumentCreate):
         "show_sub_category": body.show_sub_category,
         "show_notes": body.show_notes,
         "design": body.design,
+        "payment_link": body.payment_link,
         "status": "draft",
         "converted_to_invoice_id": None,
         "created_at": now_iso(),

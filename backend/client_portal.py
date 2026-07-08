@@ -10,11 +10,13 @@ and other team-only fields are intentionally excluded.
 from __future__ import annotations
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from auth import get_current_user
 from database import db
 
 public_router = APIRouter(prefix="/portal", tags=["client-portal"])
+router = APIRouter(dependencies=[Depends(get_current_user)], tags=["client-portal-internal"])
 
 STAGE_LABELS = {
     "booked": "محجوز",
@@ -50,6 +52,7 @@ async def get_portal(token: str):
             "is_quote": d.get("is_quote"),
             "total": d.get("total"),
             "status": d.get("status"),
+            "payment_link": d.get("payment_link") or "",
             "created_at": d.get("created_at"),
         } for d in docs]
 
@@ -131,4 +134,78 @@ async def sign_portal(token: str, body: dict):
     )
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="الرابط غير صحيح")
+    return {"ok": True}
+
+
+# ============ رابط توقيع مخصص يُقفل تلقائياً بعد الاستخدام (طلب #12) ============
+# مختلف عن رابط "حالة المشروع" العام أعلاه (اللي يفضل مفتوح دايماً) — هذا رابط
+# لمرة واحدة تحديداً لجمع التوقيع، وبمجرد ما العميل يوقّع، يصير الرابط مقفول نهائياً.
+
+import uuid as _uuid
+
+
+@router.post("/clients/{client_id}/signing-link", tags=["client-portal"])
+async def generate_signing_link(client_id: str):
+    """يولّد رابط توقيع جديد لمرة واحدة — استدعِه من التطبيق الداخلي (يحتاج تسجيل دخول)."""
+    client = await db.clients.find_one({"id": client_id}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=404, detail="العميل غير موجود")
+
+    sign_token = _uuid.uuid4().hex
+    await db.clients.update_one(
+        {"id": client_id},
+        {"$set": {"sign_token": sign_token, "sign_token_used": False, "sign_token_created_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"sign_token": sign_token}
+
+
+@public_router.get("/sign/{sign_token}")
+async def get_signing_link(sign_token: str):
+    """صفحة التوقيع المخصصة — تعرض تفاصيل الخدمة فقط، وتُقفل تلقائياً بعد أول توقيع."""
+    client = await db.clients.find_one({"sign_token": sign_token}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=404, detail="رابط التوقيع غير صحيح")
+    if client.get("sign_token_used"):
+        raise HTTPException(status_code=410, detail="هذا الرابط استُخدم بالفعل وتم إغلاقه. تواصل معنا لو تحتاج رابط جديد.")
+
+    return {
+        "client_name": client.get("name"),
+        "service_type": client.get("service_type"),
+        "sub_category": client.get("sub_category"),
+        "agreed_price": client.get("agreed_price"),
+        "notes": client.get("notes", ""),
+    }
+
+
+@public_router.post("/sign/{sign_token}")
+async def submit_signing_link(sign_token: str, body: dict):
+    """يسجّل التوقيع ويقفل الرابط فوراً — أي محاولة ثانية بنفس الرابط ترفض تلقائياً."""
+    signature = (body or {}).get("signature")
+    if not signature:
+        raise HTTPException(status_code=400, detail="التوقيع مطلوب")
+
+    client = await db.clients.find_one({"sign_token": sign_token}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=404, detail="رابط التوقيع غير صحيح")
+    if client.get("sign_token_used"):
+        raise HTTPException(status_code=410, detail="هذا الرابط استُخدم بالفعل وتم إغلاقه.")
+
+    await db.clients.update_one(
+        {"sign_token": sign_token},
+        {"$set": {
+            "approval_signature": signature,
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+            "sign_token_used": True,  # قفل نهائي — الرابط ما يشتغل بعدها
+            "stage_locked": True,  # حالة المشروع تتثبت فور التوقيع — ما تتغير إلا بفك القفل يدوياً
+        }},
+    )
+    return {"ok": True}
+
+
+@router.post("/clients/{client_id}/unlock-stage", tags=["client-portal"])
+async def unlock_client_stage(client_id: str):
+    """فك قفل حالة المشروع يدوياً (بعد التوقيع) — لو احتجت تعدّل المرحلة لأي سبب استثنائي."""
+    r = await db.clients.update_one({"id": client_id}, {"$set": {"stage_locked": False}})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="العميل غير موجود")
     return {"ok": True}
