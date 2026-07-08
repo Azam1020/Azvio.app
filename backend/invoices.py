@@ -188,8 +188,10 @@ async def convert_to_invoice(doc_id: str):
     return invoice
 
 
-@router.get("/documents/{doc_id}/pdf")
-async def document_pdf(doc_id: str):
+async def _build_document_pdf_bytes(doc_id: str) -> bytes:
+    """يبني ملف PDF لفاتورة/عرض سعر ويرجّعه كـ bytes خام — دالة مشتركة يستخدمها
+    endpoint الفريق الداخلي (/documents/{id}/pdf) وendpoint بوابة العميل العامة كمان،
+    عشان ما يصير تكرار منطق (طلب #12)."""
     doc = await db.documents.find_one({"id": doc_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="المستند غير موجود")
@@ -294,8 +296,15 @@ async def document_pdf(doc_id: str):
     c.showPage()
     c.save()
     buf.seek(0)
+    return buf.getvalue()
+
+
+@router.get("/documents/{doc_id}/pdf")
+async def document_pdf(doc_id: str):
+    pdf_bytes = await _build_document_pdf_bytes(doc_id)
+    doc = await db.documents.find_one({"id": doc_id}, {"_id": 0, "display_number": 1})
     return StreamingResponse(
-        buf,
+        io.BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f"inline; filename={doc['display_number']}.pdf"},
     )

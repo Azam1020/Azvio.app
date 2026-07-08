@@ -36,19 +36,23 @@ async def get_portal(token: str):
     stage = client.get("stage") or "booked"
     project_id = client.get("id")
     
-    # احصل على الفاتورة إذا كانت موجودة
-    invoice = None
+    # احصل على كل الفواتير/عروض السعر المرتبطة بهذا العميل (المجموعة الحقيقية db.documents —
+    # كانت البوابة تقرأ من db.invoices الخطأ، مجموعة شبه فاضية غير مستخدمة فعلياً بشاشة الفواتير)
+    invoices = []
     if project_id:
-        invoice_doc = await db.invoices.find_one({"client_id": project_id}, {"_id": 0})
-        if invoice_doc:
-            invoice = {
-                "id": invoice_doc.get("id"),
-                "amount": invoice_doc.get("amount"),
-                "status": invoice_doc.get("status"),
-                "due_date": invoice_doc.get("due_date"),
-                "payment_link": invoice_doc.get("payment_link")
-            }
-    
+        docs = await db.documents.find(
+            {"client_id": project_id},
+            {"_id": 0}
+        ).sort("created_at", -1).to_list(20)
+        invoices = [{
+            "id": d.get("id"),
+            "display_number": d.get("display_number"),
+            "is_quote": d.get("is_quote"),
+            "total": d.get("total"),
+            "status": d.get("status"),
+            "created_at": d.get("created_at"),
+        } for d in docs]
+
     # احصل على الملفات إذا كانت موجودة
     files = []
     if stage == "delivered" and project_id:
@@ -86,11 +90,33 @@ async def get_portal(token: str):
         "status": client.get("status"),
         "drive_link": client.get("drive_link") if stage == "delivered" else None,
         "has_signature": bool(client.get("approval_signature")),
-        "invoice": invoice,
+        "invoices": invoices,
         "files": files,
         "notes": notes,
         "project_id": project_id
     }
+
+
+@public_router.get("/{token}/invoices/{doc_id}/pdf")
+async def portal_invoice_pdf(token: str, doc_id: str):
+    """تحميل فاتورة/عرض سعر بصيغة PDF من رابط البوابة العام — بدون تسجيل دخول،
+    محمي برمز البوابة الخاص بالعميل نفسه (طلب #12: كل شي مرتبط بالفواتير من نفس الرابط)."""
+    client = await db.clients.find_one({"portal_token": token}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=404, detail="الرابط غير صحيح أو منتهي")
+    doc = await db.documents.find_one({"id": doc_id, "client_id": client["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="المستند غير موجود أو لا يخص هذا العميل")
+
+    from invoices import _build_document_pdf_bytes
+    from fastapi.responses import Response
+
+    pdf_bytes = await _build_document_pdf_bytes(doc_id)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{doc.get("display_number", "invoice")}.pdf"'},
+    )
 
 
 @public_router.post("/{token}/sign")
