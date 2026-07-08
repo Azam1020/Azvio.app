@@ -170,6 +170,15 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        <Text style={styles.sectionTitle}>تخصيص</Text>
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.linkRow} onPress={() => router.push('/home-customize')}>
+            <Ionicons name="chevron-back" size={16} color={C.muted} />
+            <Text style={styles.linkRowText}>ترتيب أزرار الرئيسية وإخفاء ما لا تحتاجه</Text>
+            <Ionicons name="apps-outline" size={18} color={C.brand} />
+          </TouchableOpacity>
+        </View>
+
         {user?.role === 'admin' && (
           <>
             <Text style={styles.sectionTitle}>الميزانية الشهرية للمصاريف</Text>
@@ -320,6 +329,8 @@ const makeStyles = (C: any) =>
   StyleSheet.create({
     wrap: { padding: 16, paddingBottom: 40 },
     card: { backgroundColor: C.surface, borderRadius: R.lg, padding: 16, marginBottom: 16, ...shadow },
+    linkRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+    linkRowText: { flex: 1, fontFamily: F.regular, fontSize: 13, color: C.onSurface, textAlign: 'right' },
     profileRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
     avatar: { width: 52, height: 52, borderRadius: 26, backgroundColor: C.brandSoft, alignItems: 'center', justifyContent: 'center' },
     name: { fontFamily: F.bold, fontSize: 16, color: C.onSurface, textAlign: 'right' },

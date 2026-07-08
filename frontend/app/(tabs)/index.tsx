@@ -209,6 +209,11 @@ export default function Dashboard() {
       // لو فشل الطلب لأي سبب، نخلي كل الأقسام ظاهرة بدل ما نخفي كل شي بالغلط
       setAllowedSections(['content', 'calendar', 'services', 'pricing', 'invoices', 'portfolio', 'whatsapp', 'insights', 'google_accounts', 'links', 'settings', 'finance', 'clients']);
     }
+    try {
+      const layout = await api('/home/layout');
+      setHomeOrder(layout?.order ?? []);
+      setHomeHidden(layout?.hidden ?? []);
+    } catch {}
   }, []);
 
   useFocusEffect(
@@ -249,7 +254,20 @@ export default function Dashboard() {
   ];
 
   // الأقسام المسموح لدور المستخدم يشوفها — تُجلب من الباك اند (طلب #17)
-  const navCards = allCards.filter((c) => allowedSections.includes(c.key));
+  const [homeOrder, setHomeOrder] = useState<string[]>([]);
+  const [homeHidden, setHomeHidden] = useState<string[]>([]);
+
+  // الأقسام المسموح لدور المستخدم يشوفها (صلاحية) + الترتيب/الإخفاء المخصص (تفضيل شخصي، طلب #11)
+  const navCards = allCards
+    .filter((c) => allowedSections.includes(c.key) && !homeHidden.includes(c.key))
+    .sort((a, b) => {
+      const ia = homeOrder.indexOf(a.key);
+      const ib = homeOrder.indexOf(b.key);
+      if (ia === -1 && ib === -1) return 0;
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
 
   // Chart data prep
   const chartWidth = Math.min(width - 32 - 16, 520); // container padding + card padding

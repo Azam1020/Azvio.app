@@ -945,7 +945,7 @@ async def delete_event(event_id: str):
 
 @router.get("/dashboard")
 async def dashboard():
-    clients = await db.clients.find({}, {"_id": 0, "status": 1}).to_list(5000)
+    clients = await db.clients.find({}, {"_id": 0, "status": 1, "service_type": 1}).to_list(5000)
     txs = await db.transactions.find({}, {"_id": 0, "type": 1, "amount": 1, "date": 1}).to_list(10000)
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     month_income = sum(t["amount"] for t in txs if t["type"] == "income" and (t.get("date") or "").startswith(month))
@@ -956,6 +956,18 @@ async def dashboard():
     for c in content_items:
         if c.get("stage") in stages:
             stages[c["stage"]] += 1
+
+    # توزيع العملاء حسب نوع الخدمة (طلب #11: أشكال تحليل أكثر)
+    service_breakdown: dict = {}
+    for c in clients:
+        st = c.get("service_type") or "غير محدد"
+        service_breakdown[st] = service_breakdown.get(st, 0) + 1
+
+    # إحصائيات المهام السريعة
+    tasks_total = await db.tasks.count_documents({})
+    tasks_done = await db.tasks.count_documents({"status": "done"})
+    tasks_overdue = await db.tasks.count_documents({"due_date": {"$lt": today_str()}, "status": {"$ne": "done"}})
+
     return {
         "clients_total": len(clients),
         "clients_in_progress": sum(1 for c in clients if c.get("status") == "in_progress"),
@@ -964,6 +976,11 @@ async def dashboard():
         "month_expenses": month_expenses,
         "upcoming_events": events,
         "content_stages": stages,
+        "service_breakdown": service_breakdown,
+        "tasks_total": tasks_total,
+        "tasks_done": tasks_done,
+        "tasks_overdue": tasks_overdue,
+        "tasks_completion_rate": round((tasks_done / tasks_total * 100), 1) if tasks_total else 0,
     }
 
 
@@ -1124,4 +1141,36 @@ async def delete_testimonial(testimonial_id: str):
     r = await db.testimonials.delete_one({"id": testimonial_id})
     if r.deleted_count == 0:
         raise HTTPException(status_code=404, detail="التقييم غير موجود")
+    return {"ok": True}
+
+
+# ============ تخصيص الرئيسية (طلب #11) ============
+
+class HomeLayoutUpdate(BaseModel):
+    order: list[str]  # ترتيب مفاتيح الأزرار المطلوب
+    hidden: list[str] = []  # مفاتيح الأزرار المخفية
+
+
+@router.get("/home/layout")
+async def get_home_layout(user: dict = Depends(get_current_user)):
+    """ترتيب المستخدم المخصص لأزرار الرئيسية — كل مستخدم له ترتيبه الخاص."""
+    doc = await db.user_settings.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    doc = doc or {}
+    return {
+        "order": doc.get("home_order", []),
+        "hidden": doc.get("home_hidden", []),
+    }
+
+
+@router.put("/home/layout")
+async def update_home_layout(body: HomeLayoutUpdate, user: dict = Depends(get_current_user)):
+    await db.user_settings.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "home_order": body.order,
+            "home_hidden": body.hidden,
+            "updated_at": now_iso(),
+        }},
+        upsert=True,
+    )
     return {"ok": True}
