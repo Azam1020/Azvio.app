@@ -18,7 +18,7 @@ from typing import Optional
 
 import arabic_reshaper
 from bidi.algorithm import get_display
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from pymongo import ReturnDocument
@@ -28,7 +28,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-from auth import get_current_user
+from auth import get_current_user, get_current_admin
 from database import db, today_str
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -194,13 +194,37 @@ async def document_pdf(doc_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="المستند غير موجود")
 
-    accent = colors.HexColor("#3E9194") if doc.get("design", "brand") == "brand" else colors.black
+    settings = await db.business_settings.find_one({"id": "invoice_design"}, {"_id": 0}) or {}
+    custom_color = settings.get("accent_color")
+    if custom_color:
+        try:
+            accent = colors.HexColor(custom_color)
+        except Exception:
+            accent = colors.HexColor("#3E9194")
+    else:
+        accent = colors.HexColor("#3E9194") if doc.get("design", "brand") == "brand" else colors.black
 
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     width, height = A4
     right = width - 50
     y = height - 60
+
+    # الشعار المخصص (لو مرفوع) — يظهر أعلى يسار الصفحة
+    logo_url = settings.get("logo_url", "")
+    if logo_url:
+        try:
+            import urllib.request
+            from reportlab.lib.utils import ImageReader
+            with urllib.request.urlopen(logo_url, timeout=5) as resp:
+                logo_data = resp.read()
+            logo_img = ImageReader(io.BytesIO(logo_data))
+            iw, ih = logo_img.getSize()
+            logo_h = 40
+            logo_w = logo_h * (iw / ih)
+            c.drawImage(logo_img, 50, height - 80, width=logo_w, height=logo_h, mask='auto')
+        except Exception:
+            pass  # فشل تحميل الشعار ما يوقف توليد الفاتورة نفسها
 
     title = "عرض سعر" if doc["is_quote"] else "فاتورة" + (" ضريبية" if doc.get("apply_vat", True) else "")
     c.setFillColor(accent)
@@ -486,6 +510,97 @@ AZVIO Team
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ تخصيص تصميم الفواتير (طلب #3) ============
+
+class InvoiceDesignSettings(BaseModel):
+    default_design: str = "brand"  # brand | minimal
+    default_apply_vat: bool = True
+    default_vat_rate: float = 15
+    show_sub_category: bool = True
+    show_notes: bool = True
+    accent_color: str = ""  # لون مخصص بصيغة hex (اختياري) — لو فاضي يستخدم لون brand الافتراضي
+
+
+@router.get("/invoices/design-settings")
+async def get_design_settings():
+    """إعدادات تصميم الفواتير — عامة لكل العمل (مو لكل مستخدم لحاله)، عشان أي عضو فريق
+    يصدر فاتورة تطلع بنفس هوية AZVIO دايماً بغض النظر مين سجّل الدخول."""
+    doc = await db.business_settings.find_one({"id": "invoice_design"}, {"_id": 0})
+    doc = doc or {}
+    return {
+        "default_design": doc.get("default_design", "brand"),
+        "default_apply_vat": doc.get("default_apply_vat", True),
+        "default_vat_rate": doc.get("default_vat_rate", 15),
+        "show_sub_category": doc.get("show_sub_category", True),
+        "show_notes": doc.get("show_notes", True),
+        "accent_color": doc.get("accent_color", ""),
+        "logo_url": doc.get("logo_url", ""),
+    }
+
+
+@router.put("/invoices/design-settings", dependencies=[Depends(get_current_admin)])
+async def update_design_settings(body: InvoiceDesignSettings):
+    """تعديل هوية الفاتورة — للأدمن فقط (مدير المشروع فأعلى)، عشان ما يقدر أي عضو يغيّرها."""
+    await db.business_settings.update_one(
+        {"id": "invoice_design"},
+        {"$set": {
+            "default_design": body.default_design,
+            "default_apply_vat": body.default_apply_vat,
+            "default_vat_rate": body.default_vat_rate,
+            "show_sub_category": body.show_sub_category,
+            "show_notes": body.show_notes,
+            "accent_color": body.accent_color,
+            "updated_at": datetime.now().isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@router.post("/invoices/upload-logo", dependencies=[Depends(get_current_admin)])
+async def upload_invoice_logo(file: UploadFile = File(...)):
+    """رفع شعار/تصميم مخصص يظهر بأعلى كل فاتورة وعرض سعر (طلب: رفع تصميم مخصص) — للأدمن فقط."""
+    from supabase_storage import is_configured, _upload_sync, _signed_url_sync
+    import uuid as _uuid
+
+    if not is_configured():
+        raise HTTPException(status_code=400, detail="التخزين (Supabase) غير مفعّل بعد")
+
+    allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="الصيغة يجب تكون PNG أو JPEG أو WEBP")
+
+    data = await file.read()
+    if len(data) > 3 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="حجم الصورة كبير — الحد الأقصى 3 ميجابايت")
+
+    ext = (file.filename or "logo.png").split(".")[-1]
+    path = f"invoice-logos/business/{_uuid.uuid4().hex}.{ext}"
+
+    try:
+        from fastapi.concurrency import run_in_threadpool
+        await run_in_threadpool(_upload_sync, path, data, file.content_type)
+        url = await run_in_threadpool(_signed_url_sync, path, 60 * 60 * 24 * 365 * 5)  # صالح 5 سنوات تقريباً
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"فشل رفع الشعار: {e}")
+
+    await db.business_settings.update_one(
+        {"id": "invoice_design"},
+        {"$set": {"logo_url": url, "logo_path": path, "updated_at": datetime.now().isoformat()}},
+        upsert=True,
+    )
+    return {"ok": True, "logo_url": url}
+
+
+@router.delete("/invoices/upload-logo", dependencies=[Depends(get_current_admin)])
+async def remove_invoice_logo():
+    await db.business_settings.update_one(
+        {"id": "invoice_design"},
+        {"$set": {"logo_url": "", "logo_path": "", "updated_at": datetime.now().isoformat()}},
+    )
+    return {"ok": True}
 
 
 from datetime import timedelta
