@@ -207,6 +207,83 @@ class PortfolioUpdate(BaseModel):
     public: Optional[bool] = None
 
 
+async def _enrich_media_urls(doc: dict) -> dict:
+    """يبني روابط موقّعة فعلية لوسائط Supabase قبل أي استخدام خارجي (مزامنة الموقع مثلاً)."""
+    from supabase_storage import get_signed_url, is_configured
+    if is_configured():
+        for m in (doc.get("media") or []):
+            if m.get("kind") == "supabase" and m.get("path") and not m.get("url"):
+                try:
+                    m["url"] = await get_signed_url(m["path"], ttl=60 * 60 * 24 * 365 * 5)
+                except Exception:
+                    pass
+    return doc
+
+
+async def _sync_item_to_website(item: dict) -> None:
+    """ينشر عنصر بورتفوليو بموقع azvio.co/work مباشرة — الموقع يقرأ من نفس جداول Supabase
+    هذي (projects + project_media)، فما يحتاج أي تعديل بكود الموقع نفسه (طلب #6)."""
+    from supabase_storage import get_client, is_configured
+    if not is_configured():
+        return
+    client = get_client()
+    if client is None:
+        return
+
+    # أول صورة غلاف نستخدمها كـ image_url الرئيسي بشبكة الأعمال بالموقع
+    cover_url = item.get("cover_url") or ""
+    if not cover_url:
+        for m in (item.get("media") or []):
+            if m.get("url"):
+                cover_url = m["url"]
+                break
+
+    category = item.get("sub_category") or item.get("service_type") or "تصوير"
+
+    row = {
+        "id": item["id"],  # نفس المعرّف بالتطبيق — عشان التحديث يصير upsert سليم
+        "title": item.get("title") or "مشروع",
+        "category": category,
+        "image_url": cover_url,
+        "description": item.get("description") or "",
+        "sort_order": 0,
+    }
+    try:
+        client.table("projects").upsert(row).execute()
+    except Exception as e:
+        print(f"[portfolio-sync] فشل نشر المشروع {item['id']} بالموقع: {e}")
+        return
+
+    # ملفات الوسائط الإضافية (غير صورة الغلاف)
+    try:
+        client.table("project_media").delete().eq("project_id", item["id"]).execute()
+        media_rows = []
+        for m in (item.get("media") or []):
+            url = m.get("url")
+            if not url or url == cover_url:
+                continue
+            media_rows.append({"project_id": item["id"], "media_url": url})
+        if media_rows:
+            client.table("project_media").insert(media_rows).execute()
+    except Exception as e:
+        print(f"[portfolio-sync] فشل مزامنة وسائط المشروع {item['id']}: {e}")
+
+
+async def _unpublish_from_website(item_id: str) -> None:
+    """يحذف المشروع من موقع azvio.co/work — يُستدعى عند إلغاء النشر أو الحذف."""
+    from supabase_storage import get_client, is_configured
+    if not is_configured():
+        return
+    client = get_client()
+    if client is None:
+        return
+    try:
+        client.table("project_media").delete().eq("project_id", item_id).execute()
+        client.table("projects").delete().eq("id", item_id).execute()
+    except Exception as e:
+        print(f"[portfolio-sync] فشل حذف المشروع {item_id} من الموقع: {e}")
+
+
 @router.put("/portfolio/{item_id}")
 async def update_portfolio_item(item_id: str, body: PortfolioUpdate):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -215,7 +292,21 @@ async def update_portfolio_item(item_id: str, body: PortfolioUpdate):
     r = await db.portfolio_items.update_one({"id": item_id}, {"$set": updates})
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="عنصر البورتفوليو غير موجود")
-    return await db.portfolio_items.find_one({"id": item_id}, {"_id": 0})
+    doc = await db.portfolio_items.find_one({"id": item_id}, {"_id": 0})
+
+    # مزامنة تلقائية مع الموقع: نشر لو public=true، حذف لو رجع private
+    if "public" in updates:
+        if updates["public"]:
+            doc = await _enrich_media_urls(doc)
+            await _sync_item_to_website(doc)
+        else:
+            await _unpublish_from_website(item_id)
+    elif doc.get("public"):
+        # عدّل العنوان/الوصف بس والعنصر أصلاً منشور — حدّث نسخة الموقع كمان
+        doc = await _enrich_media_urls(doc)
+        await _sync_item_to_website(doc)
+
+    return doc
 
 
 @router.delete("/portfolio/{item_id}")
@@ -223,6 +314,7 @@ async def delete_portfolio_item(item_id: str):
     r = await db.portfolio_items.delete_one({"id": item_id})
     if r.deleted_count == 0:
         raise HTTPException(status_code=404, detail="عنصر البورتفوليو غير موجود")
+    await _unpublish_from_website(item_id)  # يضمن حذفه من الموقع أيضاً لو كان منشوراً
     return {"ok": True}
 
 
