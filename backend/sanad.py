@@ -98,7 +98,14 @@ __CONTEXT__
 
 """ + ACTION_PROTOCOL + """
 
-أسلوبك: عربي، ودود، مختصر، عملي واحترافي. استخدم أرقاماً وحقائق من بيانات العمل عند الإجابة.
+أسلوبك: عربي (لهجة سعودية طبيعية عند المحادثة العادية)، ودود، مختصر، عملي واحترافي. استخدم أرقاماً وحقائق من بيانات العمل عند الإجابة.
+
+## فهم النية، مو الأوامر الحرفية
+عزّام يتكلم معك زي ما يتكلم مع شخص، مو زي أوامر لبرنامج. لازم تفهم قصده حتى لو الصيغة مو دقيقة أو رسمية:
+- لو قال "الحين خلصت مع فلان التصوير" افهم إنه يقصد نقل مرحلة المشروع لـ editing، حتى لو ما قال "غيّر الحالة" حرفياً.
+- لو سأل بطريقة غير مباشرة أو ناقصة تفاصيل، لا تطلب منه يعيد الصياغة بشكل "صحيح" — افهم قصده من السياق وبيانات العمل المتوفرة لك، واسأل بس عن التفاصيل الناقصة فعلاً (مثل الاسم أو المبلغ).
+- افهم اللهجة السعودية العامية بكل تفاصيلها (كلمات مثل "ودي"، "أبيك تسوي"، "خلها"، "ما ضبط") بنفس دقة الفصحى.
+- لا تتصرف كأنك تنتظر "أمر" محدد بصيغة معينة — أنت تتفاعل مع كلامه الطبيعي وتستنتج المطلوب.
 """
 
 
@@ -364,6 +371,21 @@ def build_system(context: str) -> str:
     return SANAD_SYSTEM.replace("__TODAY__", today_str()).replace("__CONTEXT__", context)
 
 
+_COMPLEX_SIGNALS = [
+    "خطة", "خطط", "استراتيجية", "استراتيجيه", "حلل", "تحليل", "قارن", "مقارنة",
+    "تفصيل شامل", "بالتفصيل", "ادرس", "دراسة", "توقع", "خطوة بخطوة", "plan", "strategy", "analyze",
+]
+
+
+def _needs_strong_model(message: str) -> bool:
+    """يقرر هل الرسالة "بسيطة" (رد سريع بـ Gemini Flash يكفيها) أو "معقدة" (تحتاج
+    تفكير أعمق فنحوّلها لنموذج أقوى) — طلب #14: سرعة بالعادي، قوة وقت الحاجة."""
+    text = (message or "").strip()
+    if len(text) > 350:  # رسالة طويلة ومفصّلة = غالباً تحتاج تفكير أعمق
+        return True
+    return any(signal in text for signal in _COMPLEX_SIGNALS)
+
+
 async def get_history_text(session_id: str) -> str:
     history = await db.chat_messages.find({"session_id": session_id}, {"_id": 0}).sort("created_at", -1).to_list(12)
     history = list(reversed(history))
@@ -405,8 +427,9 @@ async def sanad_chat(body: ChatRequest):
     if hist:
         system += f"\n\n## آخر المحادثة\n{hist}"
     await store_message(body.session_id, "user", body.message)
+    task = "chat" if _needs_strong_model(body.message) else "chat_fast"
     try:
-        text = await ask_text(system=system, user=body.message, task="chat")
+        text = await ask_text(system=system, user=body.message, task=task)
     except LLMError as e:
         raise HTTPException(status_code=500, detail=f"تعذر الاتصال بسند: {e}")
     clean, actions = await execute_actions(text)
@@ -514,8 +537,9 @@ async def sanad_voice_message(
     if hist:
         system += f"\n\n## آخر المحادثة\n{hist}"
     await store_message(session_id, "user", transcript)
+    task = "chat" if _needs_strong_model(transcript) else "chat_fast"
     try:
-        text = await ask_text(system=system, user=transcript, task="chat")
+        text = await ask_text(system=system, user=transcript, task=task)
     except LLMError as e:
         raise HTTPException(status_code=500, detail=f"تعذر الاتصال بسند: {e}")
     clean, actions = await execute_actions(text)

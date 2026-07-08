@@ -42,6 +42,7 @@ class LLMError(Exception):
 
 _TEXT_TASK_MAP = {
     "chat": (CLAUDE_SONNET, GEMINI_PRO),
+    "chat_fast": (GEMINI_FLASH, CLAUDE_HAIKU),  # رد سريع للمحادثة العادية (طلب #14)
     "insight": (CLAUDE_SONNET, GEMINI_PRO),
     "advice": (CLAUDE_SONNET, GEMINI_PRO),
     "analyze": (CLAUDE_SONNET, GEMINI_PRO),
