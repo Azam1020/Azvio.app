@@ -110,6 +110,7 @@ export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [data, setData] = useState<Dash | null>(null);
+  const [allowedSections, setAllowedSections] = useState<string[]>([]);
   const [offline, setOffline] = useState(false);
   const [series, setSeries] = useState<Series | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -201,6 +202,13 @@ export default function Dashboard() {
       setSeries(ts.data);
       setOffline(dash.fromCache || ts.fromCache);
     } catch {}
+    try {
+      const perms = await api('/team/permissions/mine');
+      setAllowedSections(perms?.sections ?? []);
+    } catch {
+      // لو فشل الطلب لأي سبب، نخلي كل الأقسام ظاهرة بدل ما نخفي كل شي بالغلط
+      setAllowedSections(['content', 'calendar', 'services', 'pricing', 'invoices', 'portfolio', 'whatsapp', 'insights', 'google_accounts', 'links', 'settings', 'finance', 'clients']);
+    }
   }, []);
 
   useFocusEffect(
@@ -224,25 +232,24 @@ export default function Dashboard() {
 
   const contentTotal = data ? Object.values(data.content_stages).reduce((a, b) => a + b, 0) : 0;
 
-  const navCards = [
-    { title: 'المحتوى', sub: `${contentTotal} عنصر`, icon: 'film' as const, href: '/content' },
-    { title: 'التقويم', sub: 'مواعيد التصوير والتسليم', icon: 'calendar' as const, href: '/calendar' },
-    { title: 'خدماتي', sub: 'درون ومونتاج', icon: 'briefcase' as const, href: '/services' },
-    { title: 'تسعيرتي', sub: 'أسعارك مقابل السوق', icon: 'pricetags' as const, href: '/pricing' },
-    { title: 'الفواتير وعروض السعر', sub: 'أنشئ فاتورة أو عرض سعر بضغطة', icon: 'document-text' as const, href: '/invoices' },
-    { title: 'البورتفوليو', sub: 'مشاريعك المُسلَّمة', icon: 'images' as const, href: '/portfolio' },
-    { title: 'تحليل واتساب', sub: 'استخرج العملاء من المحادثات', icon: 'logo-whatsapp' as const, href: '/whatsapp' },
-    { title: 'رؤى الأسبوع', sub: 'تقرير سند الأسبوعي', icon: 'analytics' as const, href: '/insights' },
-    { title: 'حسابات Google', sub: 'ربط تقويم Google', icon: 'logo-google' as const, href: '/google-accounts' },
-    { title: 'روابط سريعة', sub: 'روابطك اليومية', icon: 'link' as const, href: '/links' },
-    { title: 'الإعدادات', sub: 'حسابك وكلمة المرور', icon: 'settings' as const, href: '/settings' },
-    ...(user?.role === 'admin'
-      ? [
-          { title: 'إدارة المستخدمين', sub: 'إضافة وصلاحيات الفريق', icon: 'people' as const, href: '/team' },
-          { title: 'ملاحظات سند', sub: 'الأخطاء والمزايا المُقترحة', icon: 'chatbubbles' as const, href: '/tickets' },
-        ]
-      : []),
+  const allCards = [
+    { key: 'content', title: 'المحتوى', sub: `${contentTotal} عنصر`, icon: 'film' as const, href: '/content' },
+    { key: 'calendar', title: 'التقويم', sub: 'مواعيد التصوير والتسليم', icon: 'calendar' as const, href: '/calendar' },
+    { key: 'services', title: 'خدماتي', sub: 'درون ومونتاج', icon: 'briefcase' as const, href: '/services' },
+    { key: 'pricing', title: 'تسعيرتي', sub: 'أسعارك مقابل السوق', icon: 'pricetags' as const, href: '/pricing' },
+    { key: 'invoices', title: 'الفواتير وعروض السعر', sub: 'أنشئ فاتورة أو عرض سعر بضغطة', icon: 'document-text' as const, href: '/invoices' },
+    { key: 'portfolio', title: 'البورتفوليو', sub: 'مشاريعك المُسلَّمة', icon: 'images' as const, href: '/portfolio' },
+    { key: 'whatsapp', title: 'تحليل واتساب', sub: 'استخرج العملاء من المحادثات', icon: 'logo-whatsapp' as const, href: '/whatsapp' },
+    { key: 'insights', title: 'رؤى الأسبوع', sub: 'تقرير سند الأسبوعي', icon: 'analytics' as const, href: '/insights' },
+    { key: 'google_accounts', title: 'حسابات Google', sub: 'ربط تقويم Google', icon: 'logo-google' as const, href: '/google-accounts' },
+    { key: 'links', title: 'روابط سريعة', sub: 'روابطك اليومية', icon: 'link' as const, href: '/links' },
+    { key: 'settings', title: 'الإعدادات', sub: 'حسابك وكلمة المرور', icon: 'settings' as const, href: '/settings' },
+    { key: 'team', title: 'إدارة المستخدمين', sub: 'إضافة وصلاحيات الفريق', icon: 'people' as const, href: '/team' },
+    { key: 'tickets', title: 'ملاحظات سند', sub: 'الأخطاء والمزايا المُقترحة', icon: 'chatbubbles' as const, href: '/tickets' },
   ];
+
+  // الأقسام المسموح لدور المستخدم يشوفها — تُجلب من الباك اند (طلب #17)
+  const navCards = allCards.filter((c) => allowedSections.includes(c.key));
 
   // Chart data prep
   const chartWidth = Math.min(width - 32 - 16, 520); // container padding + card padding

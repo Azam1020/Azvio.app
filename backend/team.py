@@ -161,3 +161,15 @@ async def enable_user(user_id: str):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     return {"ok": True}
+
+
+@router.get("/permissions/mine", dependencies=[Depends(get_current_user)])
+async def my_permissions(current_user: dict = Depends(get_current_user)):
+    """الأقسام المسموح للمستخدم الحالي يشوفها بالتطبيق — الواجهة تخفي أي قسم مو موجود بالقائمة."""
+    from roles import allowed_sections, role_label
+    role = current_user.get("role", "photographer")
+    return {
+        "role": role,
+        "role_label": role_label(role),
+        "sections": sorted(allowed_sections(role)),
+    }

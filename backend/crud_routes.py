@@ -16,6 +16,15 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
+async def require_finance_access(user: dict = Depends(get_current_user)) -> dict:
+    """المالية بيانات حساسة (أرباح، مصاريف، ديون) — بس admin أو project_manager يشوفها (طلب #17)."""
+    from roles import can_access_section
+    role = user.get("role", "photographer")
+    if not can_access_section(role, "finance"):
+        raise HTTPException(status_code=403, detail="لا تملك صلاحية الوصول للمالية")
+    return user
+
+
 
 
 def new_id():
@@ -365,7 +374,7 @@ class TransactionUpdate(BaseModel):
     paid: Optional[bool] = None
 
 
-@router.get("/transactions")
+@router.get("/transactions", dependencies=[Depends(require_finance_access)])
 async def list_transactions(type: str = ""):
     q = {"type": type} if type else {}
     return await db.transactions.find(q, {"_id": 0}).sort([("date", -1), ("created_at", -1)]).to_list(2000)
@@ -390,7 +399,7 @@ def guess_expense_category(description: str) -> str:
     return ""
 
 
-@router.post("/transactions")
+@router.post("/transactions", dependencies=[Depends(require_finance_access)])
 async def create_transaction(body: TransactionCreate):
     doc = body.model_dump()
     if not doc.get("date"):
@@ -402,7 +411,7 @@ async def create_transaction(body: TransactionCreate):
     return doc
 
 
-@router.put("/transactions/{tx_id}")
+@router.put("/transactions/{tx_id}", dependencies=[Depends(require_finance_access)])
 async def update_transaction(tx_id: str, body: TransactionUpdate):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     r = await db.transactions.update_one({"id": tx_id}, {"$set": updates})
@@ -411,7 +420,7 @@ async def update_transaction(tx_id: str, body: TransactionUpdate):
     return await db.transactions.find_one({"id": tx_id}, {"_id": 0})
 
 
-@router.delete("/transactions/{tx_id}")
+@router.delete("/transactions/{tx_id}", dependencies=[Depends(require_finance_access)])
 async def delete_transaction(tx_id: str):
     r = await db.transactions.delete_one({"id": tx_id})
     if r.deleted_count == 0:
@@ -419,7 +428,7 @@ async def delete_transaction(tx_id: str):
     return {"ok": True}
 
 
-@router.get("/finance/summary")
+@router.get("/finance/summary", dependencies=[Depends(require_finance_access)])
 async def finance_summary():
     txs = await db.transactions.find({}, {"_id": 0}).to_list(10000)
     month = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -648,7 +657,7 @@ async def delete_my_pricing(price_id: str):
 
 # ============ Finance Statistics (detailed) ============
 
-@router.get("/finance/statistics")
+@router.get("/finance/statistics", dependencies=[Depends(require_finance_access)])
 async def finance_statistics(months: int = 6):
     """Detailed statistics for the finance screen: totals, by-category expenses, income by client, monthly trends."""
     now = datetime.now(timezone.utc)
