@@ -220,6 +220,15 @@ async def _enrich_media_urls(doc: dict) -> dict:
     return doc
 
 
+def _to_pg_uuid(hex_id: str) -> str:
+    """معرّفات portfolio_items عندنا hex بدون شرطات (uuid4().hex) — Postgres/Supabase
+    يتوقع صيغة UUID القياسية بالشرطات (8-4-4-4-12)، وإلا يرفض الإدراج بصمت."""
+    h = hex_id.replace("-", "")
+    if len(h) != 32:
+        return hex_id  # شكل غير متوقع، نرجعه كما هو بدل ما نكسره
+    return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+
+
 async def _sync_item_to_website(item: dict) -> None:
     """ينشر عنصر بورتفوليو بموقع azvio.co/work مباشرة — الموقع يقرأ من نفس جداول Supabase
     هذي (projects + project_media)، فما يحتاج أي تعديل بكود الموقع نفسه (طلب #6)."""
@@ -239,9 +248,10 @@ async def _sync_item_to_website(item: dict) -> None:
                 break
 
     category = item.get("sub_category") or item.get("service_type") or "تصوير"
+    pg_id = _to_pg_uuid(item["id"])
 
     row = {
-        "id": item["id"],  # نفس المعرّف بالتطبيق — عشان التحديث يصير upsert سليم
+        "id": pg_id,  # نفس المعرّف بالتطبيق (محوّل لصيغة UUID) — عشان التحديث يصير upsert سليم
         "title": item.get("title") or "مشروع",
         "category": category,
         "image_url": cover_url,
@@ -256,13 +266,13 @@ async def _sync_item_to_website(item: dict) -> None:
 
     # ملفات الوسائط الإضافية (غير صورة الغلاف)
     try:
-        client.table("project_media").delete().eq("project_id", item["id"]).execute()
+        client.table("project_media").delete().eq("project_id", pg_id).execute()
         media_rows = []
         for m in (item.get("media") or []):
             url = m.get("url")
             if not url or url == cover_url:
                 continue
-            media_rows.append({"project_id": item["id"], "media_url": url})
+            media_rows.append({"project_id": pg_id, "media_url": url})
         if media_rows:
             client.table("project_media").insert(media_rows).execute()
     except Exception as e:
@@ -277,9 +287,10 @@ async def _unpublish_from_website(item_id: str) -> None:
     client = get_client()
     if client is None:
         return
+    pg_id = _to_pg_uuid(item_id)
     try:
-        client.table("project_media").delete().eq("project_id", item_id).execute()
-        client.table("projects").delete().eq("id", item_id).execute()
+        client.table("project_media").delete().eq("project_id", pg_id).execute()
+        client.table("projects").delete().eq("id", pg_id).execute()
     except Exception as e:
         print(f"[portfolio-sync] فشل حذف المشروع {item_id} من الموقع: {e}")
 
