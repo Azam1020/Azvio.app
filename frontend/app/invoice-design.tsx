@@ -24,7 +24,7 @@ export default function InvoiceDesignSettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({
     default_design: 'brand',
-    default_apply_vat: true,
+    default_apply_vat: false,
     default_vat_rate: '15',
     show_sub_category: true,
     show_notes: true,
@@ -38,7 +38,7 @@ export default function InvoiceDesignSettingsScreen() {
       const r = await api('/invoices/design-settings');
       setSettings({
         default_design: r.default_design || 'brand',
-        default_apply_vat: r.default_apply_vat ?? true,
+        default_apply_vat: r.default_apply_vat ?? false,
         default_vat_rate: String(r.default_vat_rate ?? 15),
         show_sub_category: r.show_sub_category ?? true,
         show_notes: r.show_notes ?? true,

@@ -12,6 +12,7 @@ later without needing to change this module's shape.
 from __future__ import annotations
 import io
 import os
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -48,9 +49,17 @@ def new_id():
     return uuid.uuid4().hex
 
 
+# خط Cairo-Bold/Regular ناقصه رسومات "الصيغة المنفردة" (Isolated Form) لكل الحروف العربية
+# تقريباً (36 رمز) — تصير موجودة كل ما ينتهي حرف مثل "ة" أو "ر" الكلمة بدون اتصال بعده.
+# بدونها reportlab يرسم مربع فارغ بدل الحرف. الحل: نرجّع الصيغة المنفردة تحديداً (بدون ما
+# نلمس صيغ الوصل الأول/الوسط/الآخر الشغالة صح) لشكلها الأساسي المتوفر بالخط — نفس الشكل بصرياً.
+_ISOLATED_FORM_FIX = {c: unicodedata.normalize("NFKC", chr(c)) for c in range(0xFE80, 0xFEF5) if unicodedata.category(chr(c)) == "Lo"}
+
+
 def rtl(text: str) -> str:
     """Reshape + reorder Arabic text so reportlab draws it correctly."""
-    return get_display(arabic_reshaper.reshape(text or ""))
+    shaped = get_display(arabic_reshaper.reshape(text or ""))
+    return "".join(_ISOLATED_FORM_FIX.get(ord(ch), ch) for ch in shaped)
 
 
 async def _next_number(kind: str) -> int:
@@ -74,7 +83,7 @@ class DocumentCreate(BaseModel):
     service_type: str = "drone"
     sub_category: str = ""
     items: list[InvoiceItem]
-    apply_vat: bool = True
+    apply_vat: bool = False  # عزّام عمل حر، الضريبة مو مفعّلة افتراضياً
     vat_rate: float = 15
     is_quote: bool = False
     notes: str = ""
@@ -528,7 +537,7 @@ AZVIO Team
 
 class InvoiceDesignSettings(BaseModel):
     default_design: str = "brand"  # brand | minimal
-    default_apply_vat: bool = True
+    default_apply_vat: bool = False
     default_vat_rate: float = 15
     show_sub_category: bool = True
     show_notes: bool = True

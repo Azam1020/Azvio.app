@@ -33,7 +33,7 @@ const EMPTY_FORM = {
   service_type: 'drone',
   sub_category: '',
   is_quote: true,
-  apply_vat: true,
+  apply_vat: false,
   vat_rate: '15',
   notes: '',
   show_sub_category: true,
