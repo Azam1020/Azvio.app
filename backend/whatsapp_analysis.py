@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from auth import get_current_user
-from database import db, today_str
+from database import db, today_str, new_portal_token
 from llm_client import ask_text, LLMError
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -264,7 +264,7 @@ async def apply_analysis(analysis_id: str, body: ApplyRequest, user=Depends(get_
                 "source": client_info.get("source") or "واتساب",
                 "notes": (a.get("summary") or "")[:400],
                 "contact_id": contact_id,
-                "portal_token": uuid.uuid4().hex[:16],
+                "portal_token": await new_portal_token(),
                 "logs": (
                     [{
                         "id": uuid.uuid4().hex,

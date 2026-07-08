@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from auth import get_current_user
-from database import db, today_str
+from database import db, today_str, new_portal_token
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -102,7 +102,7 @@ async def create_client(body: ClientCreate):
     doc.update({
         "id": new_id(),
         "logs": [],
-        "portal_token": uuid.uuid4().hex[:16],
+        "portal_token": await new_portal_token(),
         "created_at": now_iso(),
         "updated_at": now_iso(),
     })
@@ -1177,7 +1177,10 @@ async def seed_defaults():
         ])
     # Backfill portal_token for clients created before this feature existed
     async for c in db.clients.find({"portal_token": {"$exists": False}}, {"id": 1}):
-        await db.clients.update_one({"id": c["id"]}, {"$set": {"portal_token": uuid.uuid4().hex[:16]}})
+        await db.clients.update_one({"id": c["id"]}, {"$set": {"portal_token": await new_portal_token()}})
+    # ترحيل العملاء اللي عندهم رمز hex قديم (طويل) لرمز رقمي جديد (طلب: رابط بالأرقام)
+    async for c in db.clients.find({"portal_token": {"$regex": "^[a-f0-9]{16}$"}}, {"id": 1}):
+        await db.clients.update_one({"id": c["id"]}, {"$set": {"portal_token": await new_portal_token()}})
 
 
 # ============ Testimonials (client reviews shown inside the app) ============
