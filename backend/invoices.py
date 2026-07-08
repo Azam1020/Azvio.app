@@ -94,9 +94,19 @@ class DocumentCreate(BaseModel):
 
 
 class DocumentUpdate(BaseModel):
-    status: Optional[str] = None  # draft | sent | approved | paid
+    client_id: Optional[str] = None
+    client_name: Optional[str] = None
+    service_type: Optional[str] = None
+    sub_category: Optional[str] = None
+    items: Optional[list[InvoiceItem]] = None
+    apply_vat: Optional[bool] = None
+    vat_rate: Optional[float] = None
     notes: Optional[str] = None
+    show_sub_category: Optional[bool] = None
+    show_notes: Optional[bool] = None
+    design: Optional[str] = None
     payment_link: Optional[str] = None
+    status: Optional[str] = None  # draft | sent | approved | paid
 
 
 def _totals(items: list[dict], vat_rate: float, apply_vat: bool = True) -> dict:
@@ -155,11 +165,25 @@ async def create_document(body: DocumentCreate):
 
 @router.put("/documents/{doc_id}")
 async def update_document(doc_id: str, body: DocumentUpdate):
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
-    updates["updated_at"] = now_iso()
-    r = await db.documents.update_one({"id": doc_id}, {"$set": updates})
-    if r.matched_count == 0:
+    existing = await db.documents.find_one({"id": doc_id}, {"_id": 0})
+    if not existing:
         raise HTTPException(status_code=404, detail="المستند غير موجود")
+
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "items" in updates:
+        updates["items"] = [i for i in updates["items"] if (i.get("description") or "").strip()]
+        if not updates["items"]:
+            raise HTTPException(status_code=400, detail="أضف بندًا واحدًا على الأقل")
+
+    # لو تغيّرت البنود أو نسبة/تفعيل الضريبة، لازم نعيد حساب الإجماليات — وإلا يفضل السعر القديم غلط
+    if "items" in updates or "vat_rate" in updates or "apply_vat" in updates:
+        items = updates.get("items", existing.get("items", []))
+        vat_rate = updates.get("vat_rate", existing.get("vat_rate", 15))
+        apply_vat = updates.get("apply_vat", existing.get("apply_vat", False))
+        updates.update(_totals(items, vat_rate, apply_vat))
+
+    updates["updated_at"] = now_iso()
+    await db.documents.update_one({"id": doc_id}, {"$set": updates})
     return await db.documents.find_one({"id": doc_id}, {"_id": 0})
 
 

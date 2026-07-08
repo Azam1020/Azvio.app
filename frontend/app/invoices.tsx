@@ -17,13 +17,23 @@ type Item = { description: string; amount: string };
 type Doc = {
   id: string;
   display_number: string;
+  client_id?: string;
   client_name: string;
+  service_type?: string;
+  sub_category?: string;
   is_quote: boolean;
   status: string;
   total: number;
   subtotal: number;
   vat_amount: number;
   vat_rate: number;
+  apply_vat: boolean;
+  notes?: string;
+  show_sub_category?: boolean;
+  show_notes?: boolean;
+  design?: string;
+  payment_link?: string;
+  items?: Array<{ description: string; amount: number }>;
   created_at: string;
   converted_to_invoice_id: string | null;
 };
@@ -54,6 +64,7 @@ export default function InvoicesScreen() {
   const [filter, setFilter] = useState<'all' | 'quote' | 'invoice'>('all');
   const [docs, setDocs] = useState<Doc[]>([]);
   const [modal, setModal] = useState(false);
+  const [editingDoc, setEditingDoc] = useState<Doc | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [items, setItems] = useState<Item[]>([{ description: '', amount: '' }]);
@@ -118,6 +129,7 @@ export default function InvoicesScreen() {
   );
 
   const openAdd = (asQuote: boolean) => {
+    setEditingDoc(null);
     setForm({ ...EMPTY_FORM, is_quote: asQuote });
     setItems([{ description: '', amount: '' }]);
     setPricingResult(null);
@@ -204,6 +216,29 @@ export default function InvoicesScreen() {
     setPricingOpen(false);
   };
 
+  const openEditDoc = (doc: Doc) => {
+    setEditingDoc(doc);
+    setSelectedClientId(doc.client_id || '');
+    setForm({
+      client_name: doc.client_name,
+      service_type: doc.service_type || 'drone',
+      sub_category: doc.sub_category || '',
+      is_quote: doc.is_quote,
+      apply_vat: doc.apply_vat,
+      vat_rate: String(doc.vat_rate ?? 15),
+      notes: doc.notes || '',
+      show_sub_category: doc.show_sub_category ?? true,
+      show_notes: doc.show_notes ?? true,
+      design: doc.design || 'brand',
+      payment_link: doc.payment_link || '',
+    });
+    setItems(doc.items?.length ? doc.items.map((i: any) => ({ description: i.description, amount: String(i.amount) })) : [{ description: '', amount: '' }]);
+    setPricingResult(null);
+    setClientPickerOpen(false);
+    setClientSearch('');
+    setModal(true);
+  };
+
   const save = async () => {
     const cleanItems = items
       .filter((it) => it.description.trim() && parseFloat(it.amount) > 0)
@@ -214,25 +249,27 @@ export default function InvoicesScreen() {
     }
     setSaving(true);
     try {
-      await api('/documents', {
-        method: 'POST',
-        body: JSON.stringify({
-          client_id: selectedClientId,
-          client_name: form.client_name,
-          service_type: form.service_type,
-          sub_category: form.sub_category,
-          is_quote: form.is_quote,
-          apply_vat: form.apply_vat,
-          vat_rate: parseFloat(form.vat_rate) || 0,
-          notes: form.notes,
-          show_sub_category: form.show_sub_category,
-          show_notes: form.show_notes,
-          design: form.design,
-          payment_link: form.payment_link,
-          items: cleanItems,
-        }),
-      });
+      const payload = {
+        client_id: selectedClientId,
+        client_name: form.client_name,
+        service_type: form.service_type,
+        sub_category: form.sub_category,
+        apply_vat: form.apply_vat,
+        vat_rate: parseFloat(form.vat_rate) || 0,
+        notes: form.notes,
+        show_sub_category: form.show_sub_category,
+        show_notes: form.show_notes,
+        design: form.design,
+        payment_link: form.payment_link,
+        items: cleanItems,
+      };
+      if (editingDoc) {
+        await api(`/documents/${editingDoc.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      } else {
+        await api('/documents', { method: 'POST', body: JSON.stringify({ ...payload, is_quote: form.is_quote }) });
+      }
       setModal(false);
+      setEditingDoc(null);
       setSelectedClientId('');
       load();
     } catch (e: any) {
@@ -318,7 +355,7 @@ export default function InvoicesScreen() {
           <Empty icon="document-text-outline" text="لا توجد مستندات بعد" hint="أضف أول عرض سعر أو فاتورة بالأعلى" />
         ) : (
           docs.map((doc) => (
-            <View key={doc.id} style={styles.card}>
+            <TouchableOpacity key={doc.id} style={styles.card} onPress={() => openEditDoc(doc)} activeOpacity={0.7}>
               <View style={styles.cardHead}>
                 <Text style={styles.docNumber}>{doc.display_number}</Text>
                 <View style={[styles.statusBadge, doc.status === 'paid' && { backgroundColor: C.success + '22' }]}>
@@ -351,15 +388,18 @@ export default function InvoicesScreen() {
                   <Ionicons name="trash-outline" size={16} color={C.error} />
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
 
       <AppModal
         visible={modal}
-        title={form.is_quote ? 'عرض سعر جديد' : 'فاتورة جديدة'}
-        onClose={() => setModal(false)}
+        title={editingDoc ? `تعديل ${editingDoc.display_number}` : form.is_quote ? 'عرض سعر جديد' : 'فاتورة جديدة'}
+        onClose={() => {
+          setModal(false);
+          setEditingDoc(null);
+        }}
         onSave={save}
         saving={saving}
       >
