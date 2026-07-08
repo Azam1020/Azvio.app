@@ -8,9 +8,11 @@ Only safe, client-facing fields are exposed here — internal notes, source,
 and other team-only fields are intentionally excluded.
 """
 from __future__ import annotations
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from auth import get_current_user
 from database import db
@@ -81,6 +83,9 @@ async def get_portal(token: str):
             "created_at": n.get("created_at")
         } for n in notes_docs]
     
+    delivered = stage == "delivered"
+    already_reviewed = bool(client.get("testimonial_submitted"))
+
     return {
         "name": client.get("name"),
         "service_type": client.get("service_type"),
@@ -91,12 +96,16 @@ async def get_portal(token: str):
         "stages": [{"key": s, "label": STAGE_LABELS[s]} for s in STAGE_ORDER],
         "agreed_price": client.get("agreed_price"),
         "status": client.get("status"),
-        "drive_link": client.get("drive_link") if stage == "delivered" else None,
+        "drive_link": client.get("drive_link") if delivered else None,
         "has_signature": bool(client.get("approval_signature")),
         "invoices": invoices,
         "files": files,
         "notes": notes,
-        "project_id": project_id
+        "project_id": project_id,
+        # بعد التسليم: الرابط يتحول من "متابعة حالة حيّة" لصفحة تقييم + وصول للفاتورة/الدفع فقط
+        # (طلب: "يتوقف الرابط ويطلعله هو التقييم، والفاتورة داخلها")
+        "delivered": delivered,
+        "already_reviewed": already_reviewed,
     }
 
 
@@ -209,3 +218,33 @@ async def unlock_client_stage(client_id: str):
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="العميل غير موجود")
     return {"ok": True}
+
+
+class PortalReview(BaseModel):
+    rating: int = 5
+    comment: str = ""
+
+
+@public_router.post("/{token}/review")
+async def submit_portal_review(token: str, body: PortalReview):
+    """يسمح للعميل يقيّم الخدمة من نفس رابط البوابة بعد التسليم — بدون تسجيل دخول.
+    التقييم ينحفظ بجدول testimonials العام (يظهر بشاشة "شهادات العملاء" الداخلية)."""
+    client = await db.clients.find_one({"portal_token": token}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=404, detail="الرابط غير صحيح أو منتهي")
+    if client.get("stage") != "delivered":
+        raise HTTPException(status_code=400, detail="التقييم يكون متاحاً بعد تسليم المشروع فقط")
+    if client.get("testimonial_submitted"):
+        raise HTTPException(status_code=400, detail="تم إرسال تقييمك مسبقاً، شكراً لك!")
+
+    rating = max(1, min(5, body.rating))
+    await db.testimonials.insert_one({
+        "id": str(uuid.uuid4()),
+        "client_name": client.get("name") or "عميل AZVIO",
+        "rating": rating,
+        "comment": (body.comment or "").strip(),
+        "service_type": client.get("service_type") or "drone",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await db.clients.update_one({"portal_token": token}, {"$set": {"testimonial_submitted": True}})
+    return {"ok": True, "message": "شكراً لك على وقتك! 🙏"}

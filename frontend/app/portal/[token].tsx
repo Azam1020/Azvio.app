@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '@/src/api';
@@ -38,6 +38,8 @@ type PortalData = {
     created_at: string;
   }>;
   project_id?: string;
+  delivered?: boolean;
+  already_reviewed?: boolean;
 };
 
 export default function ClientPortalScreen() {
@@ -47,6 +49,25 @@ export default function ClientPortalScreen() {
   const [error, setError] = useState('');
   const [signModal, setSignModal] = useState(false);
   const [signing, setSigning] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewSent, setReviewSent] = useState(false);
+
+  const submitReview = async () => {
+    setSubmittingReview(true);
+    try {
+      await api(`/portal/${token}/review`, {
+        method: 'POST',
+        body: JSON.stringify({ rating, comment: reviewComment }),
+      });
+      setReviewSent(true);
+    } catch (e: any) {
+      // لو فشل (مثلاً أرسل قبل كذا)، لسا نعرض شكر بدل خطأ يربك العميل
+      setReviewSent(true);
+    }
+    setSubmittingReview(false);
+  };
 
   const load = async () => {
     try {
@@ -104,22 +125,62 @@ export default function ClientPortalScreen() {
         </Text>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>حالة المشروع</Text>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${(data.stage_index / (data.stages.length - 1)) * 100}%` }]} />
-        </View>
-        <View style={styles.stagesRow}>
-          {data.stages.map((s, i) => (
-            <View key={s.key} style={styles.stageItem}>
-              <View style={[styles.stageDot, i <= data.stage_index && styles.stageDotDone]}>
-                {i <= data.stage_index && <Ionicons name="checkmark" size={12} color="#FFF" />}
+      {!data.delivered ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>حالة المشروع</Text>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${(data.stage_index / (data.stages.length - 1)) * 100}%` }]} />
+          </View>
+          <View style={styles.stagesRow}>
+            {data.stages.map((s, i) => (
+              <View key={s.key} style={styles.stageItem}>
+                <View style={[styles.stageDot, i <= data.stage_index && styles.stageDotDone]}>
+                  {i <= data.stage_index && <Ionicons name="checkmark" size={12} color="#FFF" />}
+                </View>
+                <Text style={[styles.stageLabel, i <= data.stage_index && styles.stageLabelDone]}>{s.label}</Text>
               </View>
-              <Text style={[styles.stageLabel, i <= data.stage_index && styles.stageLabelDone]}>{s.label}</Text>
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
-      </View>
+      ) : (
+        <View style={styles.card}>
+          <View style={styles.deliveredBanner}>
+            <Ionicons name="checkmark-done-circle" size={32} color={C.success} />
+            <Text style={styles.deliveredTitle}>تم تسليم مشروعك بنجاح 🎉</Text>
+          </View>
+
+          {data.already_reviewed || reviewSent ? (
+            <Text style={styles.thanksText}>شكراً لك على تقييمك، نتشرف بخدمتك دائماً 🙏</Text>
+          ) : (
+            <>
+              <Text style={styles.reviewPrompt}>كيف كانت تجربتك معنا؟</Text>
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <TouchableOpacity key={n} onPress={() => setRating(n)} hitSlop={6}>
+                    <Ionicons name={n <= rating ? 'star' : 'star-outline'} size={32} color="#F5B400" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={styles.reviewInput}
+                placeholder="اكتب رأيك (اختياري)..."
+                placeholderTextColor={C.muted}
+                value={reviewComment}
+                onChangeText={setReviewComment}
+                multiline
+                textAlign="right"
+              />
+              <TouchableOpacity style={styles.submitReviewBtn} onPress={submitReview} disabled={submittingReview}>
+                {submittingReview ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.submitReviewText}>إرسال التقييم</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      )}
 
       {typeof data.agreed_price === 'number' && data.agreed_price > 0 && (
         <View style={styles.card}>
@@ -317,4 +378,21 @@ const styles = StyleSheet.create({
   signedText: { fontFamily: F.semibold, fontSize: 14, color: C.success },
   signBtn: { backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 14, alignItems: 'center' },
   signBtnText: { fontFamily: F.bold, fontSize: 14, color: '#FFF' },
+  deliveredBanner: { alignItems: 'center', gap: 8, marginBottom: 16 },
+  deliveredTitle: { fontFamily: F.bold, fontSize: 16, color: C.onSurface, textAlign: 'center' },
+  thanksText: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'center' },
+  reviewPrompt: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface, textAlign: 'center', marginBottom: 10 },
+  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginBottom: 14 },
+  reviewInput: {
+    backgroundColor: C.surface2,
+    borderRadius: R.md,
+    padding: 12,
+    minHeight: 70,
+    fontFamily: F.regular,
+    fontSize: 13,
+    color: C.onSurface,
+    marginBottom: 12,
+  },
+  submitReviewBtn: { backgroundColor: C.brand, borderRadius: R.md, paddingVertical: 12, alignItems: 'center' },
+  submitReviewText: { fontFamily: F.bold, fontSize: 14, color: '#FFF' },
 });
