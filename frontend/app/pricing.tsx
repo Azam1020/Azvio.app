@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import { api } from '@/src/api';
+import { api, apiUpload } from '@/src/api';
 import { AppModal, Empty, Field, ScreenHeader, confirmAsync } from '@/src/ui';
 import { CategoryPicker } from '@/src/CategoryPicker';
 import { ServiceTypeChips, useServiceTypeLabel } from '@/src/ServiceTypeChips';
@@ -36,6 +36,67 @@ export default function MyPricingScreen() {
   // Advice from Sanad
   const [advice, setAdvice] = useState<any | null>(null);
   const [loadingAdvice, setLoadingAdvice] = useState(false);
+  // قراءة ملف/صورة لاستخراج تسعير (طلب #4)
+  const [analyzing, setAnalyzing] = useState(false);
+  const [reviewItems, setReviewItems] = useState<any[] | null>(null);
+  const [reviewServiceType, setReviewServiceType] = useState('drone');
+
+  const pickAndAnalyzeFile = async () => {
+    const DocumentPicker = await import('expo-document-picker');
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['image/*', 'application/pdf'],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    setAnalyzing(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', {
+        uri: asset.uri,
+        name: asset.name || 'file',
+        type: asset.mimeType || 'application/octet-stream',
+      } as any);
+      fd.append('service_type', reviewServiceType);
+      const res = await apiUpload(
+        `/my-pricing/analyze-file?service_type=${encodeURIComponent(reviewServiceType)}`,
+        fd
+      );
+      if (!res.items || res.items.length === 0) {
+        Alert.alert('ما لقينا شي', 'سند ما قدر يستخرج بيانات تسعير واضحة من هذا الملف.');
+      } else {
+        setReviewItems(res.items);
+      }
+    } catch (e: any) {
+      Alert.alert('تعذّر التحليل', e?.message || 'حدث خطأ');
+    }
+    setAnalyzing(false);
+  };
+
+  const confirmReviewItems = async (toAdd: any[]) => {
+    setSaving(true);
+    try {
+      for (const it of toAdd) {
+        await api('/my-pricing', {
+          method: 'POST',
+          body: JSON.stringify({
+            service_type: it.service_type || reviewServiceType,
+            sub_category: '',
+            label: it.label,
+            price_from: it.price_from || 0,
+            price_to: it.price_to || 0,
+            notes: it.notes || '',
+          }),
+        });
+      }
+      setReviewItems(null);
+      load();
+    } catch (e: any) {
+      Alert.alert('تعذّر الحفظ', e?.message || 'حدث خطأ');
+    }
+    setSaving(false);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -151,6 +212,27 @@ export default function MyPricingScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
       >
+        <View style={styles.uploadCard}>
+          <Text style={styles.uploadTitle}>📎 أضف تسعيرة من ملف أو صورة</Text>
+          <Text style={styles.uploadHint}>قائمة أسعار، عرض منافس، صورة، أو جدول بيانات — سند يقرأها ويستخرج الأسعار</Text>
+          <Text style={[styles.chipsLabel, { marginTop: 10 }]}>نوع الخدمة بالملف</Text>
+          <ServiceTypeChips value={reviewServiceType} onChange={setReviewServiceType} includeBoth={false} />
+          <TouchableOpacity
+            style={[styles.uploadBtn, analyzing && { opacity: 0.6 }]}
+            onPress={pickAndAnalyzeFile}
+            disabled={analyzing}
+          >
+            {analyzing ? (
+              <ActivityIndicator size="small" color={C.brand} />
+            ) : (
+              <>
+                <Ionicons name="cloud-upload-outline" size={16} color={C.brand} />
+                <Text style={styles.uploadBtnText}>اختر ملف أو صورة</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
           style={[styles.adviceBtn, loadingAdvice && { opacity: 0.6 }]}
           onPress={askAdvice}
@@ -302,12 +384,102 @@ export default function MyPricingScreen() {
           multiline
         />
       </AppModal>
+
+      {/* مراجعة البنود اللي استخرجها سند من الملف قبل إضافتها فعلياً — ما نضيف شي تلقائي بدون موافقتك */}
+      <AppModal
+        visible={!!reviewItems}
+        title={`مراجعة ${reviewItems?.length || 0} بند مستخرج`}
+        onClose={() => setReviewItems(null)}
+        onSave={() => reviewItems && confirmReviewItems(reviewItems)}
+        saveLabel="إضافة الكل لتسعيرتي"
+        saving={saving}
+      >
+        <Text style={styles.reviewHint}>راجع كل بند، عدّله لو احتاج، أو احذفه لو مو صحيح، قبل ما تضيفه</Text>
+        {(reviewItems || []).map((it, idx) => (
+          <View key={idx} style={styles.reviewItem}>
+            <Field
+              label="الوصف"
+              value={it.label}
+              onChangeText={(v) => {
+                const next = [...(reviewItems || [])];
+                next[idx] = { ...next[idx], label: v };
+                setReviewItems(next);
+              }}
+            />
+            <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Field
+                  label="من (ر.س)"
+                  value={String(it.price_from ?? '')}
+                  onChangeText={(v) => {
+                    const next = [...(reviewItems || [])];
+                    next[idx] = { ...next[idx], price_from: parseFloat(v) || 0 };
+                    setReviewItems(next);
+                  }}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field
+                  label="إلى (ر.س)"
+                  value={String(it.price_to ?? '')}
+                  onChangeText={(v) => {
+                    const next = [...(reviewItems || [])];
+                    next[idx] = { ...next[idx], price_to: parseFloat(v) || 0 };
+                    setReviewItems(next);
+                  }}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={() => setReviewItems((reviewItems || []).filter((_, i) => i !== idx))}
+              style={styles.removeReviewBtn}
+            >
+              <Ionicons name="trash-outline" size={14} color={C.error} />
+              <Text style={styles.removeReviewText}>احذف هذا البند</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </AppModal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   addBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.brand, alignItems: 'center', justifyContent: 'center' },
+  uploadCard: {
+    backgroundColor: C.surface,
+    borderRadius: R.lg,
+    padding: 14,
+    marginBottom: 16,
+    ...shadow,
+  },
+  uploadTitle: { fontFamily: F.bold, fontSize: 14, color: C.onSurface, textAlign: 'right' },
+  uploadHint: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'right', marginTop: 4, lineHeight: 18 },
+  chipsLabel: { fontFamily: F.semibold, fontSize: 12, color: C.onSurface2, textAlign: 'right' },
+  uploadBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: C.brand,
+    borderRadius: R.md,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  uploadBtnText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
+  reviewHint: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'right', marginBottom: 12, lineHeight: 18 },
+  reviewItem: {
+    backgroundColor: C.surface2,
+    borderRadius: R.md,
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  removeReviewBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginTop: 4 },
+  removeReviewText: { fontFamily: F.semibold, fontSize: 11, color: C.error },
   adviceBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',

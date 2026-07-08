@@ -655,6 +655,55 @@ async def delete_my_pricing(price_id: str):
     return {"ok": True}
 
 
+@router.post("/my-pricing/analyze-file")
+async def analyze_pricing_file(
+    file: UploadFile = File(...),
+    service_type: str = Form("drone"),
+    user: dict = Depends(get_current_user),
+):
+    """يقرأ ملف أو صورة (قائمة أسعار، عرض منافس، جدول بيانات...) ويستخرج منه بنود تسعير
+    مقترحة — المستخدم يراجعها ويعدّلها قبل ما تُضاف فعلياً لـ"تسعيرتي" (طلب #4)."""
+    import json
+    from sanad import _save_upload, UPLOAD_DIR
+    from llm_client import ask_with_file, LLMError
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    path, mime = await _save_upload(file)
+
+    system = "أنت مساعد يستخرج بيانات تسعير من ملفات ومستندات لمصور فيديو ودرون سعودي."
+    prompt = f"""هذا ملف يحتوي على معلومات أسعار (يمكن يكون قائمة أسعارك الخاصة، عرض من منافس، جدول بيانات، أو أي مستند فيه أسعار خدمات تصوير/مونتاج/درون).
+
+استخرج منه كل بند تسعير تقدر تلاحظه، بصيغة JSON فقط بدون أي نص إضافي، بالشكل التالي بالضبط:
+{{"items": [{{"label": "وصف مختصر للخدمة", "price_from": 0, "price_to": 0, "notes": "أي ملاحظة إضافية مفيدة"}}]}}
+
+لو ما لقيت أي بيانات تسعير واضحة بالملف، أرجع {{"items": []}}."""
+
+    try:
+        raw = await ask_with_file(system=system, prompt=prompt, file_path=path, mime=mime, task="vision")
+    except LLMError as e:
+        raise HTTPException(status_code=400, detail=f"تعذّر تحليل الملف: {e}")
+    finally:
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```")[1]
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
+    try:
+        parsed = json.loads(cleaned)
+    except Exception:
+        raise HTTPException(status_code=400, detail="سند ما قدر يفهم بيانات تسعير واضحة بهذا الملف")
+
+    items = parsed.get("items", [])
+    for it in items:
+        it["service_type"] = service_type
+    return {"items": items, "count": len(items)}
+
+
 # ============ Finance Statistics (detailed) ============
 
 @router.get("/finance/statistics", dependencies=[Depends(require_finance_access)])
