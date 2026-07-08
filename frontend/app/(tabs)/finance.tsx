@@ -2,11 +2,13 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -46,6 +48,7 @@ const SEGMENTS = [
   { key: 'stats', label: 'الإحصائيات' },
   { key: 'subscriptions', label: 'اشتراكات' },
   { key: 'debts', label: 'ديون' },
+  { key: 'operations', label: 'العمليات' },
 ];
 
 const AR_MONTHS_SHORT = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
@@ -120,17 +123,52 @@ export default function FinanceScreen() {
     }, [load])
   );
 
+  const [pendingAttachments, setPendingAttachments] = useState<any[]>([]);
+
+  const pickAttachments = async () => {
+    const res = await DocumentPicker.getDocumentAsync({
+      type: ['image/*', 'application/pdf'],
+      multiple: true,
+      copyToCacheDirectory: true,
+    });
+    if (res.canceled) return;
+    setPendingAttachments((prev) => [...prev, ...res.assets]);
+  };
+
+  const removePendingAttachment = (idx: number) => {
+    setPendingAttachments((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const save = async () => {
     if (!form.amount || !parseFloat(form.amount)) return;
     setSaving(true);
     try {
-      await api('/transactions', {
+      const created = await api('/transactions', {
         method: 'POST',
         body: JSON.stringify({ ...form, amount: parseFloat(form.amount) || 0 }),
       });
+
+      // ارفع أي ملفات/صور اخترتها (طلب #13: رفع ملفات متعددة) بعد إنشاء العملية مباشرة
+      if (pendingAttachments.length > 0 && created?.id) {
+        try {
+          const fd = new FormData();
+          for (const a of pendingAttachments) {
+            if (Platform.OS === 'web' && a.file) {
+              fd.append('files', a.file, a.name || 'file');
+            } else {
+              fd.append('files', { uri: a.uri, name: a.name || 'file', type: a.mimeType || 'application/octet-stream' } as any);
+            }
+          }
+          await apiUpload(`/transactions/${created.id}/attachments`, fd);
+        } catch (e) {
+          console.warn('attachment upload failed', e);
+        }
+      }
+
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setModal(false);
       setForm({ ...emptyForm });
+      setPendingAttachments([]);
       load();
     } catch {}
     setSaving(false);
@@ -278,6 +316,18 @@ export default function FinanceScreen() {
 
   const subs = txs.filter((t) => t.type === 'subscription');
   const debts = txs.filter((t) => t.type === 'debt');
+
+  const [opSearch, setOpSearch] = useState('');
+  const [opTypeFilter, setOpTypeFilter] = useState('');
+  const opLoading = false;
+  const filteredOps = txs.filter((t) => {
+    if (opTypeFilter && t.type !== opTypeFilter) return false;
+    if (opSearch) {
+      const hay = `${t.description || ''} ${t.category || ''} ${t.client_name || ''}`.toLowerCase();
+      if (!hay.includes(opSearch.toLowerCase())) return false;
+    }
+    return true;
+  });
   const recent = txs.slice(0, 30);
 
   const chartWidth = Math.min(width - 32 - 32, 520);
@@ -331,6 +381,15 @@ export default function FinanceScreen() {
             {item.type === 'debt' ? (item.debt_direction === 'owed_to_me' ? ' (لي)' : ' (عليّ)') : ''}
             {item.category ? ` • ${item.category}` : ''} • {item.date}
           </Text>
+          {!!item.attachments?.length && (
+            <TouchableOpacity
+              style={styles.attachmentBadge}
+              onPress={() => Linking.openURL(item.attachments[0].url)}
+            >
+              <Ionicons name="attach" size={12} color={C.brand} />
+              <Text style={styles.attachmentBadgeText}>{item.attachments.length} مرفق</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <View style={{ alignItems: 'center', gap: 6 }}>
           <Text style={[styles.txAmount, { color: meta.color }]}>
@@ -599,6 +658,56 @@ export default function FinanceScreen() {
           </>
         )}
 
+        {segment === 'operations' && (
+          <>
+            <View style={styles.searchBox}>
+              <Ionicons name="search" size={16} color={C.muted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="دور على وصف، فئة، أو اسم عميل..."
+                placeholderTextColor={C.muted}
+                value={opSearch}
+                onChangeText={setOpSearch}
+                textAlign="right"
+              />
+              {!!opSearch && (
+                <TouchableOpacity onPress={() => setOpSearch('')} hitSlop={6}>
+                  <Ionicons name="close-circle" size={16} color={C.muted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.opFilterRow}>
+              {[
+                { key: '', label: 'الكل' },
+                { key: 'income', label: 'دخل' },
+                { key: 'expense', label: 'مصروف' },
+                { key: 'withdrawal', label: 'سحب' },
+                { key: 'debt', label: 'دين' },
+                { key: 'subscription', label: 'اشتراك' },
+              ].map((f) => (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[styles.opFilterChip, opTypeFilter === f.key && styles.opFilterChipActive]}
+                  onPress={() => setOpTypeFilter(f.key)}
+                >
+                  <Text style={[styles.opFilterText, opTypeFilter === f.key && styles.opFilterTextActive]}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {opLoading ? (
+              <ActivityIndicator color={C.brand} style={{ marginTop: 20 }} />
+            ) : filteredOps.length === 0 ? (
+              <Empty icon="list-outline" text="لا توجد عمليات مطابقة" />
+            ) : (
+              filteredOps.map((t) => renderTx(t))
+            )}
+          </>
+        )}
+
         {!!invoiceError && <Text style={styles.invoiceError}>{invoiceError}</Text>}
       </ScrollView>
 
@@ -631,6 +740,7 @@ export default function FinanceScreen() {
           style={styles.addBtn}
           onPress={() => {
             setForm({ ...emptyForm });
+            setPendingAttachments([]);
             setModal(true);
           }}
           testID="add-tx-btn"
@@ -661,6 +771,23 @@ export default function FinanceScreen() {
             />
           </>
         )}
+
+        <Text style={styles.fieldLabel}>مرفقات (اختياري)</Text>
+        <TouchableOpacity style={styles.attachBtn} onPress={pickAttachments}>
+          <Ionicons name="attach" size={16} color={C.brand} />
+          <Text style={styles.attachBtnText}>أضف صور أو ملفات (تقدر تختار أكثر من وحد)</Text>
+        </TouchableOpacity>
+        {pendingAttachments.map((a, idx) => (
+          <View key={idx} style={styles.pendingAttachment}>
+            <Ionicons name="document-outline" size={16} color={C.onSurface2} />
+            <Text style={styles.pendingAttachmentName} numberOfLines={1}>
+              {a.name}
+            </Text>
+            <TouchableOpacity onPress={() => removePendingAttachment(idx)} hitSlop={6}>
+              <Ionicons name="close-circle" size={16} color={C.error} />
+            </TouchableOpacity>
+          </View>
+        ))}
       </AppModal>
 
       {/* Invoice confirmation modal */}
@@ -747,6 +874,54 @@ function LegendChip({ color, label }: { color: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
+  searchBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: C.surface,
+    borderRadius: R.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+    ...shadow,
+  },
+  searchInput: { flex: 1, fontFamily: F.regular, fontSize: 14, color: C.onSurface },
+  opFilterRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  opFilterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.divider,
+  },
+  opFilterChipActive: { backgroundColor: C.brand, borderColor: C.brand },
+  opFilterText: { fontFamily: F.semibold, fontSize: 12, color: C.onSurface2 },
+  opFilterTextActive: { color: '#FFF' },
+  attachBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: C.divider,
+    borderStyle: 'dashed',
+    borderRadius: R.md,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  attachBtnText: { fontFamily: F.regular, fontSize: 12, color: C.brand, flex: 1, textAlign: 'right' },
+  pendingAttachment: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: C.divider,
+  },
+  pendingAttachmentName: { flex: 1, fontFamily: F.regular, fontSize: 12, color: C.onSurface, textAlign: 'right' },
+  attachmentBadge: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginTop: 4 },
+  attachmentBadgeText: { fontFamily: F.regular, fontSize: 10, color: C.brand },
   header: {
     backgroundColor: C.surface,
     paddingHorizontal: 16,

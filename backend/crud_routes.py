@@ -432,9 +432,31 @@ class TransactionUpdate(BaseModel):
 
 
 @router.get("/transactions", dependencies=[Depends(require_finance_access)])
-async def list_transactions(type: str = ""):
-    q = {"type": type} if type else {}
-    return await db.transactions.find(q, {"_id": 0}).sort([("date", -1), ("created_at", -1)]).to_list(2000)
+async def list_transactions(
+    type: str = "",
+    q: str = "",  # بحث نصي بالوصف/الفئة/اسم العميل
+    date_from: str = "",
+    date_to: str = "",
+    category: str = "",
+):
+    query: dict = {}
+    if type:
+        query["type"] = type
+    if category:
+        query["category"] = category
+    if date_from or date_to:
+        query["date"] = {}
+        if date_from:
+            query["date"]["$gte"] = date_from
+        if date_to:
+            query["date"]["$lte"] = date_to
+    if q:
+        query["$or"] = [
+            {"description": {"$regex": q, "$options": "i"}},
+            {"category": {"$regex": q, "$options": "i"}},
+            {"client_name": {"$regex": q, "$options": "i"}},
+        ]
+    return await db.transactions.find(query, {"_id": 0}).sort([("date", -1), ("created_at", -1)]).to_list(2000)
 
 
 EXPENSE_CATEGORY_KEYWORDS = {
@@ -463,7 +485,7 @@ async def create_transaction(body: TransactionCreate):
         doc["date"] = today_str()
     if doc.get("type") == "expense" and not doc.get("category"):
         doc["category"] = guess_expense_category(doc.get("description", ""))
-    doc.update({"id": new_id(), "created_at": now_iso()})
+    doc.update({"id": new_id(), "attachments": [], "created_at": now_iso()})
     await db.transactions.insert_one(dict(doc))
     return doc
 
@@ -483,6 +505,57 @@ async def delete_transaction(tx_id: str):
     if r.deleted_count == 0:
         raise HTTPException(status_code=404, detail="العملية غير موجودة")
     return {"ok": True}
+
+
+@router.post("/transactions/{tx_id}/attachments", dependencies=[Depends(require_finance_access)])
+async def upload_transaction_attachments(tx_id: str, files: list[UploadFile] = File(...)):
+    """رفع صور/ملفات متعددة (إيصالات، فواتير موردين...) وربطها بعملية مالية موجودة (طلب #13)."""
+    tx = await db.transactions.find_one({"id": tx_id}, {"_id": 0})
+    if not tx:
+        raise HTTPException(status_code=404, detail="العملية غير موجودة")
+
+    from supabase_storage import is_configured, _upload_sync, _signed_url_sync
+    from fastapi.concurrency import run_in_threadpool
+
+    if not is_configured():
+        raise HTTPException(status_code=400, detail="التخزين (Supabase) غير مفعّل بعد")
+
+    new_attachments = []
+    for f in files:
+        data = await f.read()
+        if len(data) > 8 * 1024 * 1024:
+            continue  # تجاهل أي ملف أكبر من 8 ميجابايت بدل ما نوقف باقي الملفات
+        ext = (f.filename or "file").split(".")[-1]
+        path = f"transaction-attachments/{tx_id}/{uuid.uuid4().hex}.{ext}"
+        try:
+            await run_in_threadpool(_upload_sync, path, data, f.content_type or "application/octet-stream")
+            url = await run_in_threadpool(_signed_url_sync, path, 60 * 60 * 24 * 365 * 5)
+            new_attachments.append({"name": f.filename or "ملف", "url": url, "path": path, "type": f.content_type or ""})
+        except Exception as e:
+            print(f"[transaction-attachment] فشل رفع {f.filename}: {e}")
+
+    if not new_attachments:
+        raise HTTPException(status_code=400, detail="فشل رفع كل الملفات")
+
+    existing = tx.get("attachments") or []
+    await db.transactions.update_one(
+        {"id": tx_id},
+        {"$set": {"attachments": existing + new_attachments, "updated_at": now_iso()}},
+    )
+    return {"ok": True, "attachments": existing + new_attachments}
+
+
+@router.delete("/transactions/{tx_id}/attachments/{attachment_index}", dependencies=[Depends(require_finance_access)])
+async def delete_transaction_attachment(tx_id: str, attachment_index: int):
+    tx = await db.transactions.find_one({"id": tx_id}, {"_id": 0})
+    if not tx:
+        raise HTTPException(status_code=404, detail="العملية غير موجودة")
+    attachments = tx.get("attachments") or []
+    if attachment_index < 0 or attachment_index >= len(attachments):
+        raise HTTPException(status_code=404, detail="المرفق غير موجود")
+    attachments.pop(attachment_index)
+    await db.transactions.update_one({"id": tx_id}, {"$set": {"attachments": attachments, "updated_at": now_iso()}})
+    return {"ok": True, "attachments": attachments}
 
 
 @router.get("/finance/summary", dependencies=[Depends(require_finance_access)])
