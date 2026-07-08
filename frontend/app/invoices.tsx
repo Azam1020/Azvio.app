@@ -63,7 +63,7 @@ export default function InvoicesScreen() {
   const [clientSearch, setClientSearch] = useState('');
 
   const openClientPicker = async () => {
-    setClientPickerOpen(true);
+    setClientPickerOpen((v) => !v);
     if (allClients.length === 0) {
       try {
         setAllClients(await api('/clients'));
@@ -122,6 +122,8 @@ export default function InvoicesScreen() {
     setItems([{ description: '', amount: '' }]);
     setPricingResult(null);
     setSelectedClientId('');
+    setClientPickerOpen(false);
+    setClientSearch('');
     setModal(true);
   };
 
@@ -365,13 +367,50 @@ export default function InvoicesScreen() {
         <TouchableOpacity style={styles.clientPickBtn} onPress={openClientPicker}>
           <Ionicons name="person-circle-outline" size={18} color={C.brand} />
           <Text style={styles.clientPickText}>
-            {form.client_name || 'اختر عميل من القائمة'}
+            {form.client_name || 'اختر عميل أو اكتب اسمًا جديدًا'}
           </Text>
-          <Ionicons name="chevron-down" size={14} color={C.muted} />
+          <Ionicons name={clientPickerOpen ? 'chevron-up' : 'chevron-down'} size={14} color={C.muted} />
         </TouchableOpacity>
+
+        {clientPickerOpen && (
+          <View style={styles.clientDropdown}>
+            <Field
+              label=""
+              value={clientSearch}
+              onChangeText={(v) => {
+                setClientSearch(v);
+                setForm({ ...form, client_name: v });
+                setSelectedClientId('');
+              }}
+              placeholder="ابحث أو اكتب اسم عميل جديد..."
+            />
+            <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
+              {allClients
+                .filter(
+                  (c) =>
+                    !clientSearch ||
+                    c.name?.includes(clientSearch) ||
+                    c.phone?.includes(clientSearch)
+                )
+                .map((c) => (
+                  <TouchableOpacity key={c.id} style={styles.clientOption} onPress={() => pickClient(c)}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.clientOptionName}>{c.name}</Text>
+                      {!!c.phone && <Text style={styles.clientOptionPhone}>{c.phone}</Text>}
+                    </View>
+                    <Ionicons name="chevron-back" size={14} color={C.muted} />
+                  </TouchableOpacity>
+                ))}
+              {allClients.length === 0 && <Text style={styles.emptyClients}>لا يوجد عملاء بعد</Text>}
+            </ScrollView>
+          </View>
+        )}
+
         {!selectedClientId && !!form.client_name && (
           <Text style={styles.clientWarning}>
-            ⚠️ عميل غير مربوط — الفاتورة ما راح تظهر ببوابة العميل. اختره من القائمة بدل الكتابة اليدوية.
+            {form.is_quote
+              ? 'ℹ️ عميل جديد (مو بالقائمة بعد) — طبيعي بعرض السعر. لو تحول لفاتورة لاحقًا، اربطه بعميل حقيقي عشان يظهر ببوابته.'
+              : '⚠️ عميل غير مربوط — الفاتورة ما راح تظهر ببوابة العميل. اختره من القائمة لو موجود.'}
           </Text>
         )}
         <Text style={styles.chipsLabel}>نوع الخدمة</Text>
@@ -608,28 +647,6 @@ export default function InvoicesScreen() {
         />
       </AppModal>
 
-      <AppModal visible={clientPickerOpen} title="اختر عميلاً" onClose={() => setClientPickerOpen(false)}>
-        <Field label="بحث" value={clientSearch} onChangeText={setClientSearch} placeholder="اسم أو جوال..." />
-        <ScrollView style={{ maxHeight: 350 }}>
-          {allClients
-            .filter(
-              (c) =>
-                !clientSearch ||
-                c.name?.includes(clientSearch) ||
-                c.phone?.includes(clientSearch)
-            )
-            .map((c) => (
-              <TouchableOpacity key={c.id} style={styles.clientOption} onPress={() => pickClient(c)}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.clientOptionName}>{c.name}</Text>
-                  {!!c.phone && <Text style={styles.clientOptionPhone}>{c.phone}</Text>}
-                </View>
-                <Ionicons name="chevron-back" size={16} color={C.muted} />
-              </TouchableOpacity>
-            ))}
-          {allClients.length === 0 && <Text style={styles.emptyClients}>لا يوجد عملاء بعد</Text>}
-        </ScrollView>
-      </AppModal>
     </View>
   );
 }
@@ -645,6 +662,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     marginBottom: 4,
+  },
+  clientDropdown: {
+    backgroundColor: C.surface2,
+    borderRadius: R.md,
+    padding: 10,
+    marginBottom: 8,
   },
   clientPickText: { flex: 1, fontFamily: F.regular, fontSize: 14, color: C.onSurface, textAlign: 'right' },
   clientWarning: { fontFamily: F.regular, fontSize: 11, color: '#E67E22', textAlign: 'right', marginBottom: 12 },

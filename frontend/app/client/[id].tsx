@@ -335,6 +335,23 @@ export default function ClientDetail() {
           </TouchableOpacity>
         </View>
 
+        {/* رابط بوابة العميل — يحتاج نشر ويب حقيقي للتطبيق أولاً (طلب: وين الرابط؟) */}
+        {!!client.portal_token && (
+          <TouchableOpacity
+            style={styles.portalLinkBtn}
+            onPress={() => {
+              Alert.alert(
+                'يحتاج خطوة أخيرة',
+                'الرابط جاهز بالكود، بس محتاج ننشر صفحة البوابة على الويب أول (Netlify) عشان يفتح مباشرة بمتصفح العميل بدون تطبيق. اسأل كلود يكمّلها.'
+              );
+            }}
+          >
+            <Ionicons name="link" size={18} color={C.brand} />
+            <Text style={styles.portalLinkText}>رابط العميل (يحتاج نشر ويب — اضغط للتفاصيل)</Text>
+            <Ionicons name="alert-circle-outline" size={16} color="#E67E22" />
+          </TouchableOpacity>
+        )}
+
         {/* Info */}
         <View style={styles.card}>
           <InfoRow icon="cash-outline" label="السعر المتفق عليه" value={fmt(client.agreed_price)} />
@@ -537,6 +554,17 @@ const styles = StyleSheet.create({
   },
   signPromptText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
   actionsRow: { flexDirection: 'row-reverse', gap: 10, marginBottom: 12 },
+  portalLinkBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: C.brandSoft,
+    borderRadius: R.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  portalLinkText: { flex: 1, fontFamily: F.regular, fontSize: 12, color: C.onSurface, textAlign: 'right' },
   actionBtn: {
     flex: 1,
     flexDirection: 'row-reverse',

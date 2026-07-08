@@ -63,9 +63,15 @@ export default function ClientsScreen() {
     }, [load])
   );
 
-  const filtered = clients.filter((c) =>
-    c.name.toLowerCase().includes(search.trim().toLowerCase())
-  );
+  const [sortOldestFirst, setSortOldestFirst] = useState(false);
+
+  const filtered = clients
+    .filter((c) => c.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => {
+      const da = a.created_at || '';
+      const db = b.created_at || '';
+      return sortOldestFirst ? da.localeCompare(db) : db.localeCompare(da);
+    });
 
   const save = async () => {
     if (!form.name.trim()) return;
@@ -88,16 +94,25 @@ export default function ClientsScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Text style={styles.title}>العملاء</Text>
         <Text style={styles.count}>{clients.length} عميل</Text>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color={C.muted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="ابحث عن عميل..."
-            placeholderTextColor={C.muted}
-            value={search}
-            onChangeText={setSearch}
-            testID="client-search"
-          />
+        <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+          <View style={[styles.searchBox, { flex: 1 }]}>
+            <Ionicons name="search" size={18} color={C.muted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="ابحث عن عميل..."
+              placeholderTextColor={C.muted}
+              value={search}
+              onChangeText={setSearch}
+              testID="client-search"
+            />
+          </View>
+          <TouchableOpacity
+            style={styles.sortBtn}
+            onPress={() => setSortOldestFirst((v) => !v)}
+            testID="sort-clients-btn"
+          >
+            <Ionicons name={sortOldestFirst ? 'arrow-up' : 'arrow-down'} size={18} color={C.brand} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -218,6 +233,13 @@ const styles = StyleSheet.create({
     backgroundColor: C.surface2,
     borderRadius: R.md,
     paddingHorizontal: 12,
+  },
+  sortBtn: {
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.surface2,
+    borderRadius: R.md,
   },
   searchInput: {
     flex: 1,
