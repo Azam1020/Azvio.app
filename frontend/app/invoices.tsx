@@ -84,7 +84,27 @@ export default function InvoicesScreen() {
 
   const pickClient = (c: any) => {
     setSelectedClientId(c.id);
-    setForm({ ...form, client_name: c.name });
+    setForm({
+      ...form,
+      client_name: c.name,
+      service_type: c.service_type || form.service_type,
+      sub_category: c.sub_category || form.sub_category,
+    });
+    // لو عند العميل سعر متفق عليه، نعبّي أول بند تلقائياً بيه (طلب: أي عميل أختاره
+    // ينحط المبلغ والبند حقه تلقائياً) — بس لو المستخدم ما كتب شي يدوياً بأول بند.
+    if (c.agreed_price) {
+      setItems((prev) => {
+        if (prev.length && !prev[0].description && !prev[0].amount) {
+          const next = [...prev];
+          next[0] = {
+            description: c.sub_category || 'الخدمة المتفق عليها',
+            amount: String(c.agreed_price),
+          };
+          return next;
+        }
+        return prev;
+      });
+    }
     setClientPickerOpen(false);
     setClientSearch('');
   };

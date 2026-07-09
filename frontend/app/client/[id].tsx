@@ -6,6 +6,7 @@ import {
   Platform,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -335,20 +336,21 @@ export default function ClientDetail() {
           </TouchableOpacity>
         </View>
 
-        {/* رابط بوابة العميل — يحتاج نشر ويب حقيقي للتطبيق أولاً (طلب: وين الرابط؟) */}
+        {/* رابط بوابة العميل — منشور فعلياً الآن (طلب: وين الرابط؟) */}
         {!!client.portal_token && (
           <TouchableOpacity
             style={styles.portalLinkBtn}
             onPress={() => {
-              Alert.alert(
-                'يحتاج خطوة أخيرة',
-                'الرابط جاهز بالكود، بس محتاج ننشر صفحة البوابة على الويب أول (Netlify) عشان يفتح مباشرة بمتصفح العميل بدون تطبيق. اسأل كلود يكمّلها.'
-              );
+              const url = `https://portal.azvio.co/${client.portal_token}`;
+              Share.share({
+                message: `رابط متابعة مشروعك مع AZVIO 👇\n${url}`,
+                url,
+              });
             }}
           >
             <Ionicons name="link" size={18} color={C.brand} />
-            <Text style={styles.portalLinkText}>رابط العميل (يحتاج نشر ويب — اضغط للتفاصيل)</Text>
-            <Ionicons name="alert-circle-outline" size={16} color="#E67E22" />
+            <Text style={styles.portalLinkText}>مشاركة رابط العميل (الحالة + الفاتورة + التوقيع)</Text>
+            <Ionicons name="share-outline" size={16} color={C.brand} />
           </TouchableOpacity>
         )}
 
