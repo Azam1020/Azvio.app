@@ -215,6 +215,39 @@ export default function ClientDetail() {
     setEditModal(true);
   };
 
+  const [addProjectModal, setAddProjectModal] = useState(false);
+  const [newProjectForm, setNewProjectForm] = useState({ service_type: 'drone', sub_category: '', agreed_price: '', notes: '' });
+  const [savingProject, setSavingProject] = useState(false);
+
+  const openAddProject = () => {
+    setNewProjectForm({ service_type: client.service_type || 'drone', sub_category: '', agreed_price: '', notes: '' });
+    setAddProjectModal(true);
+  };
+
+  const saveNewProject = async () => {
+    setSavingProject(true);
+    try {
+      // نفس الاسم والجوال بالضبط — الباك اند يربطه تلقائياً بنفس هوية العميل (contact_id)
+      // عن طريق تطابق الجوال، فيصير "مشروع ثاني" لنفس العميل مو عميل منفصل بلا علاقة.
+      const created = await api('/clients', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: client.name,
+          phone: client.phone,
+          service_type: newProjectForm.service_type,
+          sub_category: newProjectForm.sub_category,
+          agreed_price: parseFloat(newProjectForm.agreed_price) || 0,
+          notes: newProjectForm.notes,
+        }),
+      });
+      setAddProjectModal(false);
+      router.push(`/client/${created.id}`);
+    } catch (e: any) {
+      Alert.alert('تعذّر الإضافة', e?.message || 'حدث خطأ');
+    }
+    setSavingProject(false);
+  };
+
   const saveEdit = async () => {
     setSaving(true);
     try {
@@ -405,31 +438,30 @@ export default function ClientDetail() {
             )}
           </TouchableOpacity>
 
-          {clientHistory && clientHistory.total_projects > 1 && (
-            <View style={styles.repeatBox}>
-              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="repeat" size={16} color={C.brand} />
-                <Text style={styles.repeatTitle}>
-                  {clientHistory.is_repeat_client ? '🔁 عميل متكرر — ' : ''}
-                  {clientHistory.total_projects} مشاريع مع هذا العميل
-                </Text>
-              </View>
-              {clientHistory.projects
-                .filter((p: any) => p.id !== id)
-                .map((p: any) => (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={styles.repeatItem}
-                    onPress={() => router.push(`/client/${p.id}`)}
-                  >
-                    <Text style={styles.repeatItemText}>
-                      {p.sub_category || p.service_type} — {(p.created_at || '').slice(0, 10)}
-                    </Text>
-                    <Ionicons name="chevron-back" size={14} color={C.muted} />
-                  </TouchableOpacity>
-                ))}
+          <View style={styles.repeatBox}>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Ionicons name="repeat" size={16} color={C.brand} />
+              <Text style={styles.repeatTitle}>
+                {clientHistory && clientHistory.total_projects > 1
+                  ? `${clientHistory.is_repeat_client ? '🔁 عميل متكرر — ' : ''}${clientHistory.total_projects} مشاريع مع هذا العميل`
+                  : 'مشاريع هذا العميل'}
+              </Text>
             </View>
-          )}
+            {clientHistory?.projects
+              .filter((p: any) => p.id !== id)
+              .map((p: any) => (
+                <TouchableOpacity key={p.id} style={styles.repeatItem} onPress={() => router.push(`/client/${p.id}`)}>
+                  <Text style={styles.repeatItemText}>
+                    {p.sub_category || p.service_type} — {(p.created_at || '').slice(0, 10)}
+                  </Text>
+                  <Ionicons name="chevron-back" size={14} color={C.muted} />
+                </TouchableOpacity>
+              ))}
+            <TouchableOpacity style={styles.addProjectBtn} onPress={openAddProject}>
+              <Ionicons name="add-circle-outline" size={18} color={C.brand} />
+              <Text style={styles.addProjectText}>إضافة مشروع جديد لنفس العميل</Text>
+            </TouchableOpacity>
+          </View>
 
           {waHistory.length > 0 && (
             <View style={{ marginTop: 14, marginBottom: 6 }}>
@@ -498,6 +530,41 @@ export default function ClientDetail() {
         <Field label="مصدر العميل" value={form.source} onChangeText={(v) => setForm({ ...form, source: v })} />
         <Field label="رابط Google Drive" value={form.drive_link} onChangeText={(v) => setForm({ ...form, drive_link: v })} autoCapitalize="none" />
         <Field label="ملاحظات" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} multiline />
+      </AppModal>
+
+      <AppModal
+        visible={addProjectModal}
+        title={`مشروع جديد — ${client?.name || ''}`}
+        onClose={() => setAddProjectModal(false)}
+        onSave={saveNewProject}
+        saving={savingProject}
+      >
+        <Text style={styles.projectHint}>
+          نفس بيانات العميل (الاسم والجوال) هتنربط تلقائياً — بس حدد تفاصيل هذا المشروع بالذات.
+        </Text>
+        <Text style={styles.fieldLabel}>نوع الخدمة</Text>
+        <ServiceTypeChips
+          value={newProjectForm.service_type}
+          onChange={(v) => setNewProjectForm({ ...newProjectForm, service_type: v, sub_category: '' })}
+          includeBoth
+        />
+        <CategoryPicker
+          serviceType={newProjectForm.service_type}
+          value={newProjectForm.sub_category}
+          onChange={(v) => setNewProjectForm({ ...newProjectForm, sub_category: v })}
+        />
+        <Field
+          label="السعر المتفق عليه (ر.س)"
+          value={newProjectForm.agreed_price}
+          onChangeText={(v) => setNewProjectForm({ ...newProjectForm, agreed_price: v })}
+          keyboardType="numeric"
+        />
+        <Field
+          label="ملاحظات عن هذا المشروع"
+          value={newProjectForm.notes}
+          onChangeText={(v) => setNewProjectForm({ ...newProjectForm, notes: v })}
+          multiline
+        />
       </AppModal>
 
       <AppModal visible={signModal} title="توقيع موافقة العميل" onClose={() => setSignModal(false)} scrollEnabled={false}>
@@ -641,6 +708,17 @@ const styles = StyleSheet.create({
   repeatTitle: { fontFamily: F.bold, fontSize: 12, color: C.onSurface, marginBottom: 8 },
   repeatItem: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.divider },
   repeatItemText: { fontFamily: F.regular, fontSize: 12, color: C.onSurface, textAlign: 'right' },
+  addProjectBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.divider,
+  },
+  addProjectText: { fontFamily: F.semibold, fontSize: 12, color: C.brand },
+  projectHint: { fontFamily: F.regular, fontSize: 11, color: C.muted, textAlign: 'right', marginBottom: 14, lineHeight: 18 },
   waHistoryItem: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
   waHistoryLabel: { fontFamily: F.semibold, fontSize: 12, color: C.onSurface, textAlign: 'right' },
   waHistoryDate: { fontFamily: F.regular, fontSize: 10, color: C.muted, textAlign: 'right', marginTop: 2 },
