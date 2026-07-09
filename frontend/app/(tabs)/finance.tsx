@@ -124,6 +124,22 @@ export default function FinanceScreen() {
   );
 
   const [pendingAttachments, setPendingAttachments] = useState<any[]>([]);
+  const [editingTx, setEditingTx] = useState<any>(null);
+
+  const openEditTx = (item: any) => {
+    setEditingTx(item);
+    setForm({
+      type: item.type,
+      amount: String(item.amount),
+      description: item.description || '',
+      category: item.category || '',
+      date: item.date || '',
+      client_name: item.client_name || '',
+      debt_direction: item.debt_direction || 'owed_to_me',
+    });
+    setPendingAttachments([]);
+    setModal(true);
+  };
 
   const pickAttachments = async () => {
     const res = await DocumentPicker.getDocumentAsync({
@@ -143,13 +159,22 @@ export default function FinanceScreen() {
     if (!form.amount || !parseFloat(form.amount)) return;
     setSaving(true);
     try {
-      const created = await api('/transactions', {
-        method: 'POST',
-        body: JSON.stringify({ ...form, amount: parseFloat(form.amount) || 0 }),
-      });
+      let txId = editingTx?.id;
+      if (editingTx) {
+        await api(`/transactions/${editingTx.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ ...form, amount: parseFloat(form.amount) || 0 }),
+        });
+      } else {
+        const created = await api('/transactions', {
+          method: 'POST',
+          body: JSON.stringify({ ...form, amount: parseFloat(form.amount) || 0 }),
+        });
+        txId = created?.id;
+      }
 
-      // ارفع أي ملفات/صور اخترتها (طلب #13: رفع ملفات متعددة) بعد إنشاء العملية مباشرة
-      if (pendingAttachments.length > 0 && created?.id) {
+      // ارفع أي ملفات/صور اخترتها (طلب #13: رفع ملفات متعددة) بعد الحفظ مباشرة
+      if (pendingAttachments.length > 0 && txId) {
         try {
           const fd = new FormData();
           for (const a of pendingAttachments) {
@@ -159,7 +184,7 @@ export default function FinanceScreen() {
               fd.append('files', { uri: a.uri, name: a.name || 'file', type: a.mimeType || 'application/octet-stream' } as any);
             }
           }
-          await apiUpload(`/transactions/${created.id}/attachments`, fd);
+          await apiUpload(`/transactions/${txId}/attachments`, fd);
         } catch (e) {
           console.warn('attachment upload failed', e);
         }
@@ -167,10 +192,13 @@ export default function FinanceScreen() {
 
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setModal(false);
+      setEditingTx(null);
       setForm({ ...emptyForm });
       setPendingAttachments([]);
       load();
-    } catch {}
+    } catch (e: any) {
+      Alert.alert('تعذّر الحفظ', e?.message || 'حدث خطأ');
+    }
     setSaving(false);
   };
 
@@ -368,7 +396,7 @@ export default function FinanceScreen() {
   const renderTx = (item: any, showPaidToggle = false) => {
     const meta = TX_META[item.type] || TX_META.expense;
     return (
-      <View key={item.id} style={styles.txCard}>
+      <TouchableOpacity key={item.id} style={styles.txCard} onPress={() => openEditTx(item)} activeOpacity={0.7}>
         <View style={[styles.txIcon, { backgroundColor: `${meta.color}15` }]}>
           <Ionicons name={meta.icon} size={20} color={meta.color} />
         </View>
@@ -411,7 +439,7 @@ export default function FinanceScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -739,6 +767,7 @@ export default function FinanceScreen() {
         <TouchableOpacity
           style={styles.addBtn}
           onPress={() => {
+            setEditingTx(null);
             setForm({ ...emptyForm });
             setPendingAttachments([]);
             setModal(true);
@@ -751,7 +780,16 @@ export default function FinanceScreen() {
       </View>
 
       {/* Add transaction modal */}
-      <AppModal visible={modal} title="إضافة عملية مالية" onClose={() => setModal(false)} onSave={save} saving={saving}>
+      <AppModal
+        visible={modal}
+        title={editingTx ? 'تعديل العملية' : 'إضافة عملية مالية'}
+        onClose={() => {
+          setModal(false);
+          setEditingTx(null);
+        }}
+        onSave={save}
+        saving={saving}
+      >
         <Text style={styles.fieldLabel}>نوع العملية</Text>
         <Chips options={TX_TYPES} value={form.type} onChange={(v) => setForm({ ...form, type: v })} />
         <Field label="المبلغ (ر.س) *" value={form.amount} onChangeText={(v) => setForm({ ...form, amount: v })} placeholder="0" keyboardType="numeric" />
