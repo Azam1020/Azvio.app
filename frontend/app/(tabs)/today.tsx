@@ -55,7 +55,9 @@ export default function TodayScreen() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const [stats, setStats] = useState({ completed: 0, pending: 0, completion_rate: 0 });
-  const [motivation, setMotivation] = useState('');
+  const [sanadPlan, setSanadPlan] = useState('');
+  const [sanadPlanLoading, setSanadPlanLoading] = useState(false);
+  const [refreshingPlan, setRefreshingPlan] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -80,7 +82,6 @@ export default function TodayScreen() {
           upcoming: enhanced?.sections?.upcoming ?? [],
         });
         setStats(enhanced?.stats ?? { completed: 0, pending: 0, completion_rate: 0 });
-        setMotivation(enhanced?.motivation ?? '');
       } catch {
         // أسقف للـ Endpoint القديم
         const fallback = await api('/tasks/my-today');
@@ -90,6 +91,14 @@ export default function TodayScreen() {
           upcoming: fallback?.upcoming ?? [],
         });
       }
+
+      // خطة سند الفعلية لليوم (تحليل حقيقي بالذكاء الصناعي، مخزّنة يوميًا)
+      setSanadPlanLoading(true);
+      try {
+        const r = await api('/tasks/today/sanad-plan');
+        setSanadPlan(r?.plan || '');
+      } catch {}
+      setSanadPlanLoading(false);
     } catch {
       // في حال فشل الاثنين، خلي القيم فاضية بدل ما تنهار الشاشة
       setGroups({ overdue: [], today: [], upcoming: [] });
@@ -102,6 +111,15 @@ export default function TodayScreen() {
     await load();
     setRefreshing(false);
   }, [load]);
+
+  const refreshSanadPlan = async () => {
+    setRefreshingPlan(true);
+    try {
+      const r = await api('/tasks/today/sanad-plan/refresh', { method: 'POST' });
+      setSanadPlan(r?.plan || '');
+    } catch {}
+    setRefreshingPlan(false);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -184,6 +202,7 @@ export default function TodayScreen() {
       onLongPress={() => deleteTask(task)}
       activeOpacity={0.7}
     >
+      <View pointerEvents="none" style={[styles.cardBracket, styles.cardBracketTL, { opacity: 0.3 }]} />
       <TouchableOpacity style={styles.checkBtn} onPress={() => markDone(task)}>
         <Ionicons name="ellipse-outline" size={22} color={C.brand} />
       </TouchableOpacity>
@@ -232,9 +251,11 @@ export default function TodayScreen() {
         contentContainerStyle={styles.wrap}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}
       >
-        {/* إحصائيات اليوم + رسالة التحفيز */}
+        {/* إحصائيات اليوم + خطة سند الفعلية */}
         {totalCount > 0 && (
           <View style={styles.statsCard}>
+            <View pointerEvents="none" style={[styles.cardBracket, styles.cardBracketTL]} />
+            <View pointerEvents="none" style={[styles.cardBracket, styles.cardBracketBR]} />
             {/* شريط التقدم */}
             <View style={styles.progressSection}>
               <View style={styles.progressRow}>
@@ -270,14 +291,24 @@ export default function TodayScreen() {
                 </View>
               </View>
             </View>
-            
-            {/* رسالة التحفيز من سند */}
-            {motivation && (
-              <View style={styles.motivationBox}>
-                <Ionicons name="sparkles" size={18} color={C.brand} />
-                <Text style={styles.motivationText}>{motivation}</Text>
+
+            {/* خطة سند الفعلية — تحليل حقيقي مبني على مهامك ومواعيدك اليوم، مو رسالة جاهزة */}
+            <View style={styles.sanadPlanBox}>
+              <View style={styles.sanadPlanHeader}>
+                <View style={styles.sanadPlanTitleRow}>
+                  <Ionicons name="sparkles" size={16} color={C.brand} />
+                  <Text style={styles.sanadPlanTitle}>خطة سند لليوم</Text>
+                </View>
+                <TouchableOpacity onPress={refreshSanadPlan} disabled={refreshingPlan} hitSlop={8}>
+                  <Ionicons name="refresh" size={16} color={refreshingPlan ? C.muted : C.brand} />
+                </TouchableOpacity>
               </View>
-            )}
+              {sanadPlanLoading ? (
+                <Text style={styles.sanadPlanText}>سند يحلل يومك...</Text>
+              ) : (
+                <Text style={styles.sanadPlanText}>{sanadPlan || 'ما فيه خطة حالياً'}</Text>
+              )}
+            </View>
           </View>
         )}
 
@@ -352,8 +383,12 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
     gap: 10,
+    overflow: 'hidden',
     ...shadow,
   },
+  cardBracket: { position: 'absolute', width: 12, height: 12, borderColor: C.brand },
+  cardBracketTL: { top: 6, left: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderTopLeftRadius: 4 },
+  cardBracketBR: { bottom: 6, right: 6, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderBottomRightRadius: 4, opacity: 0.35 },
   checkBtn: { paddingTop: 2 },
   title: { fontFamily: F.bold, fontSize: 14, color: C.onSurface, textAlign: 'right' },
   desc: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'right', marginTop: 4 },
@@ -378,6 +413,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: C.brand + '30',
+    overflow: 'hidden',
   },
   progressSection: {
     gap: 10,
@@ -421,20 +457,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: C.onSurface,
   },
-  motivationBox: {
+  sanadPlanBox: {
     backgroundColor: C.surface,
     borderRadius: R.md,
     padding: 12,
     marginTop: 12,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
   },
-  motivationText: {
-    fontFamily: F.semibold,
-    fontSize: 13,
-    color: C.brand,
-    flex: 1,
-    textAlign: 'right',
-  },
+  sanadPlanHeader: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  sanadPlanTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
+  sanadPlanTitle: { fontFamily: F.semibold, fontSize: 12.5, color: C.brand },
+  sanadPlanText: { fontFamily: F.regular, fontSize: 13, color: C.onSurface, textAlign: 'right', lineHeight: 20 },
 });

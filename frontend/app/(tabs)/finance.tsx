@@ -455,6 +455,7 @@ export default function FinanceScreen() {
     const meta = TX_META[item.type] || TX_META.expense;
     return (
       <TouchableOpacity key={item.id} style={styles.txCard} onPress={() => openEditTx(item)} activeOpacity={0.7}>
+        <View pointerEvents="none" style={[styles.txCardBracket]} />
         <View style={[styles.txIcon, { backgroundColor: `${meta.color}15` }]}>
           <Ionicons name={meta.icon} size={20} color={meta.color} />
         </View>
@@ -1048,8 +1049,10 @@ const styles = StyleSheet.create({
     borderRadius: R.md,
     padding: 14,
     marginBottom: 8,
+    overflow: 'hidden',
     ...shadow,
   },
+  txCardBracket: { position: 'absolute', top: 6, left: 6, width: 10, height: 10, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderColor: C.brand, opacity: 0.3, borderTopLeftRadius: 4 },
   txIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   txDesc: { fontFamily: F.semibold, fontSize: 14, color: C.onSurface },
   txMeta: { fontFamily: F.regular, fontSize: 11, color: C.muted, marginTop: 2 },

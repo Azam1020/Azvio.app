@@ -19,6 +19,47 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, F, R } from './theme';
 
 // ---------- Screen header (back + title + optional right action) ----------
+
+/** بطاقة موحّدة بهوية "زوايا الفوكس" (مستوحاة من إطار كاميرا الدرون) — التوقيع
+ * البصري الرسمي لتطبيق AZVIO. تُستخدم بدل أي View بطاقة عادية بأي شاشة، عشان
+ * كل الشاشات تاخذ نفس الهوية بمكان واحد بدل تكرار كود الزوايا يدويًا في كل ملف
+ * (طلب: التصميم الجديد يتطبق على جميع الصفحات). */
+export function BracketCard({
+  children,
+  style,
+  accent,
+  corners = 'both',
+}: {
+  children: React.ReactNode;
+  style?: any;
+  accent?: boolean;
+  corners?: 'both' | 'tl' | 'none';
+}) {
+  return (
+    <View style={[bracketStyles.card, accent && { backgroundColor: C.brand }, style]}>
+      {corners !== 'none' && (
+        <View pointerEvents="none" style={[bracketStyles.bracket, bracketStyles.tl, accent && bracketStyles.bracketOnAccent]} />
+      )}
+      {corners === 'both' && (
+        <View pointerEvents="none" style={[bracketStyles.bracket, bracketStyles.br, accent && bracketStyles.bracketOnAccent]} />
+      )}
+      {children}
+    </View>
+  );
+}
+
+const bracketStyles = StyleSheet.create({
+  card: {
+    backgroundColor: C.surface,
+    borderRadius: R.lg,
+    overflow: 'hidden',
+  },
+  bracket: { position: 'absolute', width: 12, height: 12, borderColor: C.brand, opacity: 0.35 },
+  tl: { top: 6, left: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderTopLeftRadius: 4 },
+  br: { bottom: 6, right: 6, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderBottomRightRadius: 4 },
+  bracketOnAccent: { borderColor: 'rgba(255,255,255,0.55)', opacity: 1 },
+});
+
 export function ScreenHeader({
   title,
   subtitle,

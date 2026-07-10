@@ -200,7 +200,7 @@ export default function SanadScreen() {
     scrollDown();
   };
 
-  const pickFile = async () => {
+  const pickFileFromDocs = async () => {
     const res = await DocumentPicker.getDocumentAsync({
       type: [
         'application/pdf',
@@ -214,6 +214,40 @@ export default function SanadScreen() {
     });
     if (res.canceled || !res.assets?.length) return;
     setAttachments((prev) => [...prev, ...res.assets]);
+  };
+
+  const pickFileFromGallery = async () => {
+    const ImagePicker = await import('expo-image-picker');
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('الإذن مطلوب', 'يحتاج التطبيق إذن الوصول لمعرض الصور');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true, // طلب: اختيار عدة صور مباشرة من المعرض بزر سند
+      quality: 0.8,
+    });
+    if (res.canceled || !res.assets?.length) return;
+    const mapped = res.assets.map((a) => ({
+      uri: a.uri,
+      name: a.fileName || `photo_${Date.now()}.jpg`,
+      mimeType: a.mimeType || 'image/jpeg',
+      size: a.fileSize,
+    }));
+    setAttachments((prev) => [...prev, ...mapped]);
+  };
+
+  const pickFile = () => {
+    if (Platform.OS === 'web') {
+      pickFileFromDocs();
+      return;
+    }
+    Alert.alert('إضافة مرفق', 'اختر المصدر', [
+      { text: 'من معرض الصور', onPress: pickFileFromGallery },
+      { text: 'من الملفات', onPress: pickFileFromDocs },
+      { text: 'إلغاء', style: 'cancel' },
+    ]);
   };
 
   const clearChat = async () => {

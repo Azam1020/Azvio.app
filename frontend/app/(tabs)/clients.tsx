@@ -137,6 +137,7 @@ export default function ClientsScreen() {
             onPress={() => router.push(`/client/${item.id}`)}
             testID={`client-card-${item.id}`}
           >
+            <View pointerEvents="none" style={[styles.cardBracket, styles.cardBracketTL]} />
             <View style={styles.cardRow}>
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
                 <Text style={styles.name}>{item.name}</Text>
@@ -249,7 +250,9 @@ const styles = StyleSheet.create({
     color: C.onSurface,
     textAlign: 'right',
   },
-  card: { backgroundColor: C.surface, borderRadius: R.lg, padding: 16, marginBottom: 12, ...shadow },
+  card: { backgroundColor: C.surface, borderRadius: R.lg, padding: 16, marginBottom: 12, overflow: 'hidden', ...shadow },
+  cardBracket: { position: 'absolute', width: 12, height: 12, borderColor: C.brand, opacity: 0.3 },
+  cardBracketTL: { top: 6, left: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderTopLeftRadius: 4 },
   cardRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   name: { fontFamily: F.bold, fontSize: 16, color: C.onSurface },
   metaRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 4 },

@@ -70,6 +70,19 @@ async def send_expo_push(push_token: str, title: str, body: str) -> bool:
         return False
 
 
+async def notify_all_users(title: str, body: str) -> None:
+    """إشعار فوري لكل المستخدمين اللي سجّلوا توكن (طلب: إشعارات فورية عند حدث
+    معيّن — مو بس الملخص اليومي). يُستدعى مباشرة من نقاط الإنشاء (عميل جديد،
+    دفعة واردة...) بدل الانتظار على الجدولة اليومية، فيصل فورًا حتى لو الباك
+    اند نايم (Render) لأنه يشتغل ضمن نفس الطلب اللي أنشأ العنصر."""
+    users = await db.users.find({"push_token": {"$exists": True, "$ne": ""}}, {"_id": 0}).to_list(500)
+    for u in users:
+        try:
+            await send_expo_push(u["push_token"], title, body)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"notify_all_users failed for {u.get('user_id')}: {e}")
+
+
 async def build_daily_summary() -> str:
     """Overdue clients + today's events, in one short line."""
     overdue = await db.clients.count_documents({"status": "in_progress"})
@@ -153,3 +166,39 @@ async def run_daily_reminders():
             await send_expo_push(u["push_token"], "⚠️ تنبيه الميزانية", budget_alert)
         if payment_reminder and prefs.get("financial", True):
             await send_expo_push(u["push_token"], "💳 تذكير الدفع المستحق", payment_reminder)
+
+
+async def check_upcoming_event_reminders():
+    """يفحص كل 30 دقيقة (مجدول) — أي موعد يبدأ خلال الساعتين الجايات ولسا ما
+    انبعث له تذكير، يرسل إشعار فوري. نستخدم علامة reminded_sent بمستند الموعد
+    نفسه لمنع تكرار نفس التذكير أكثر من مرة (طلب: إشعار فوري لما موعد يقرّب)."""
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    now_minutes = now.hour * 60 + now.minute
+    window_end = now_minutes + 120  # الساعتين الجايات
+
+    events = await db.events.find(
+        {"date": today, "reminded_sent": {"$ne": True}},
+        {"_id": 0, "id": 1, "title": 1, "time": 1, "client_name": 1},
+    ).to_list(200)
+    if not events:
+        return
+
+    due_ids = []
+    for e in events:
+        t = (e.get("time") or "").strip()
+        if not t or ":" not in t:
+            continue
+        try:
+            hh, mm = t.split(":")
+            event_minutes = int(hh) * 60 + int(mm)
+        except ValueError:
+            continue
+        if now_minutes <= event_minutes <= window_end:
+            due_ids.append(e["id"])
+            client_part = f" — {e['client_name']}" if e.get("client_name") else ""
+            body = f"{e.get('title', 'موعد')}{client_part} الساعة {t} ⏰"
+            await notify_all_users("سند — موعد قرّب", body)
+
+    if due_ids:
+        await db.events.update_many({"id": {"$in": due_ids}}, {"$set": {"reminded_sent": True}})

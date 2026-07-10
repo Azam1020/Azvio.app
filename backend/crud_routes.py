@@ -132,6 +132,10 @@ async def create_client(body: ClientCreate):
             }}},
         )
 
+    # إشعار فوري (طلب: إشعارات فورية عند حدث معيّن — عميل جديد)
+    from notifications import notify_all_users
+    await notify_all_users("سند — عميل جديد 🎉", f"{doc['name']} انضاف كعميل جديد")
+
     return doc
 
 
@@ -493,6 +497,13 @@ async def create_transaction(body: TransactionCreate):
         doc["category"] = guess_expense_category(doc.get("description", ""))
     doc.update({"id": new_id(), "attachments": [], "created_at": now_iso()})
     await db.transactions.insert_one(dict(doc))
+
+    # إشعار فوري لما دفعة تدخل (طلب: إشعارات فورية عند حدث معيّن — دفعة وصلت)
+    if doc.get("type") == "income" and doc.get("amount"):
+        from notifications import notify_all_users
+        who = f" من {doc['client_name']}" if doc.get("client_name") else ""
+        await notify_all_users("سند — دفعة وصلت 💰", f"{doc['amount']:,.0f} ر.س{who}")
+
     return doc
 
 

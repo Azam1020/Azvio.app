@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from database import db, today_str
+from llm_client import ask_text, LLMError
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -221,6 +222,62 @@ async def delete_task(task_id: str, user: dict = Depends(get_current_user)):
 
 
 # ============ الدفعة الأولى: شاشة اليوم + التوزيع الآلي ============
+
+@router.get("/tasks/today/sanad-plan")
+async def get_sanad_today_plan(user: dict = Depends(get_current_user)):
+    """خطة سند الفعلية لليوم — تحليل حقيقي بالذكاء الصناعي (مو رسالة تحفيزية
+    جاهزة) يقرأ المهام والمواعيد ويقترح أولوية وترتيب عمل. تُخزَّن يوميًا لكل
+    مستخدم عشان ما نستدعي النموذج كل مرة يفتح الشاشة (طلب: قسم اليوم يكون
+    احترافي ومع سند فعليًا)."""
+    today = today_str()
+    cached = await db.sanad_daily_plans.find_one({"user_id": user["user_id"], "date": today}, {"_id": 0})
+    if cached:
+        return cached
+
+    all_tasks = await db.tasks.find({"assignee_id": user["user_id"], "status": {"$ne": "done"}}, {"_id": 0}).to_list(200)
+    overdue = [t for t in all_tasks if t.get("due_date") and t["due_date"] < today]
+    due_today = [t for t in all_tasks if t.get("due_date") == today]
+    events_today = await db.events.find({"date": today}, {"_id": 0, "title": 1, "time": 1}).sort("time", 1).to_list(20)
+
+    if not overdue and not due_today and not events_today:
+        result = {"date": today, "plan": "ما عليك شي مستحق اليوم ولا مواعيد — يوم مناسب تشتغل فيه على شي مؤجل أو تاخذ راحة.", "has_content": False}
+        await db.sanad_daily_plans.update_one({"user_id": user["user_id"], "date": today}, {"$set": result}, upsert=True)
+        return result
+
+    lines = []
+    if overdue:
+        lines.append("مهام متأخرة: " + "، ".join(t["title"] for t in overdue[:8]))
+    if due_today:
+        lines.append("مهام اليوم: " + "، ".join(t["title"] for t in due_today[:8]))
+    if events_today:
+        lines.append("مواعيد اليوم: " + "، ".join(f"{e.get('title')} ({e.get('time') or '؟'})" for e in events_today))
+
+    try:
+        plan = await ask_text(
+            system=(
+                "أنت سند، مساعد صاحب استوديو تصوير جوي ومونتاج (AZVIO) بالسعودية. "
+                "تكتب بالعربي السعودي المباشر، جملتين لثلاث بالكثير. لا تكرر قائمة المهام "
+                "حرفيًا، بس رتّب الأولوية واذكر أهم شي يبدأ فيه وليش، بأسلوب مباشر وعملي "
+                "بدون مجاملات أو حشو."
+            ),
+            user="هذي مهام ومواعيد اليوم:\n" + "\n".join(lines) + "\n\nوش أولوية اليوم؟",
+            task="chat",
+            temperature=0.5,
+        )
+    except LLMError:
+        plan = "عندك " + str(len(overdue) + len(due_today)) + " مهمة اليوم — ابدأ بالمتأخرة أول."
+
+    result = {"date": today, "plan": plan.strip()[:500], "has_content": True}
+    await db.sanad_daily_plans.update_one({"user_id": user["user_id"], "date": today}, {"$set": result}, upsert=True)
+    return result
+
+
+@router.post("/tasks/today/sanad-plan/refresh")
+async def refresh_sanad_today_plan(user: dict = Depends(get_current_user)):
+    """يمسح خطة اليوم المخزّنة عشان يولّد وحدة جديدة (لو المستخدم غيّر مهامه)."""
+    await db.sanad_daily_plans.delete_one({"user_id": user["user_id"], "date": today_str()})
+    return await get_sanad_today_plan(user)
+
 
 @router.get("/tasks/today/enhanced")
 async def get_enhanced_today(user: dict = Depends(get_current_user)):

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Linking,
@@ -104,6 +104,57 @@ const STATS_META: Record<string, { title: string; icon: any; getValue: (d: any) 
 };
 
 const PREFS_CACHE_KEY = 'azvio_dashboard_prefs_v2';
+
+/** بطاقة إحصائية كبيرة واحدة تُلَف يمين/يسار بين كل الإحصائيات المختارة —
+ * بدل شبكة ثابتة، عشان تكون تجربة "قيادة" (command center) بدل أرقام متناثرة
+ * (طلب: بطاقة المبلغ الكبيرة تكون قابلة للّف بين الإحصائيات). */
+function StatsCarousel({ keys, data }: { keys: string[]; data: any }) {
+  const { width: screenW } = useWindowDimensions();
+  const cardW = screenW - 32; // نفس هوامش الصفحة (padding: 16 من كل جهة)
+  const [activeIdx, setActiveIdx] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+
+  const validKeys = keys.filter((k) => STATS_META[k]);
+  if (!validKeys.length) return null;
+
+  const onScrollEnd = (e: any) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / cardW);
+    setActiveIdx(Math.max(0, Math.min(validKeys.length - 1, idx)));
+  };
+
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onScrollEnd}
+        decelerationRate="fast"
+      >
+        {validKeys.map((statKey) => {
+          const meta = STATS_META[statKey];
+          return (
+            <View key={statKey} style={[styles.heroStatCard, { width: cardW, backgroundColor: meta.accent ? C.brand : C.surface }]}>
+              <View pointerEvents="none" style={[styles.statBracket, styles.statBracketTL, meta.accent && { borderColor: 'rgba(255,255,255,0.5)' }]} />
+              <View pointerEvents="none" style={[styles.statBracket, styles.statBracketBR, meta.accent && { borderColor: 'rgba(255,255,255,0.5)' }]} />
+              <Ionicons name={meta.icon} size={22} color={meta.accent ? 'rgba(255,255,255,0.85)' : meta.color || C.onSurface} />
+              <Text style={[styles.heroStatValue, meta.accent && { color: '#FFF' }]}>{meta.getValue(data)}</Text>
+              <Text style={[styles.heroStatLabel, meta.accent && { color: 'rgba(255,255,255,0.8)' }]}>{meta.title}</Text>
+            </View>
+          );
+        })}
+      </ScrollView>
+      {validKeys.length > 1 && (
+        <View style={styles.dotsRow}>
+          {validKeys.map((k, i) => (
+            <View key={k} style={[styles.dot, i === activeIdx && styles.dotActive]} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
 
 function sanitizeOrder(order: any[]): WidgetKey[] {
   const clean: WidgetKey[] = [];
@@ -389,35 +440,7 @@ export default function Dashboard() {
         {widgetsOrder.filter((k) => widgetsVisible[k]).map((key) => {
           if (key === 'stats') {
             if (!statsSelected.length) return null;
-            const pairs: string[][] = [];
-            for (let i = 0; i < statsSelected.length; i += 2) pairs.push(statsSelected.slice(i, i + 2));
-            return (
-              <React.Fragment key={key}>
-                {pairs.map((pair, rowIdx) => (
-                  <View style={styles.statsRow} key={rowIdx}>
-                    {pair.map((statKey) => {
-                      const meta = STATS_META[statKey];
-                      if (!meta) return null;
-                      return (
-                        <View
-                          key={statKey}
-                          style={[
-                            styles.statCard,
-                            meta.accent && { backgroundColor: C.brand },
-                            pair.length === 1 && { flex: 1 },
-                          ]}
-                        >
-                          <View pointerEvents="none" style={[styles.statBracket, styles.statBracketTL, meta.accent && { borderColor: 'rgba(255,255,255,0.6)' }]} />
-                          <Ionicons name={meta.icon} size={20} color={meta.accent ? 'rgba(255,255,255,0.85)' : meta.color || C.onSurface} />
-                          <Text style={[styles.statValue, meta.accent && { color: '#FFF' }]}>{meta.getValue(data)}</Text>
-                          <Text style={[styles.statLabel, meta.accent && { color: 'rgba(255,255,255,0.85)' }]}>{meta.title}</Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ))}
-              </React.Fragment>
-            );
+            return <StatsCarousel keys={statsSelected} data={data} key={key} />;
           }
 
           if (key === 'incomeChart' && series && series.months.length > 0) {
@@ -667,6 +690,20 @@ const styles = StyleSheet.create({
   },
   statBracket: { position: 'absolute', width: 12, height: 12, borderColor: C.brand, opacity: 0.35 },
   statBracketTL: { top: 6, left: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderTopLeftRadius: 4 },
+  statBracketBR: { bottom: 6, right: 6, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderBottomRightRadius: 4 },
+  heroStatCard: {
+    borderRadius: R.lg,
+    padding: 20,
+    alignItems: 'flex-end',
+    gap: 6,
+    overflow: 'hidden',
+    ...shadow,
+  },
+  heroStatValue: { fontFamily: F.bold, fontSize: 30, color: C.onSurface, marginTop: 4 },
+  heroStatLabel: { fontFamily: F.regular, fontSize: 13, color: C.muted },
+  dotsRow: { flexDirection: 'row-reverse', justifyContent: 'center', gap: 6, marginTop: 10 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.surface3 },
+  dotActive: { backgroundColor: C.brand, width: 16 },
   statValue: { fontFamily: F.bold, fontSize: 18, color: C.onSurface },
   statLabel: { fontFamily: F.regular, fontSize: 12, color: C.muted },
   sectionTitle: {

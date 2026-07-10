@@ -14,7 +14,7 @@ from user_settings import router as user_settings_router
 from whatsapp_analysis import router as whatsapp_router
 from portfolio import router as portfolio_router
 from team import router as team_router
-from notifications import router as notifications_router, run_daily_reminders
+from notifications import router as notifications_router, run_daily_reminders, check_upcoming_event_reminders
 from tickets import router as tickets_router
 from tasks import router as tasks_router
 from client_portal import public_router as client_portal_router
@@ -95,6 +95,7 @@ async def startup():
         logger.info(f"Supabase bucket ready: {ok}")
     scheduler = AsyncIOScheduler(timezone="Asia/Riyadh")
     scheduler.add_job(run_daily_reminders, "cron", hour=8, minute=0)
+    scheduler.add_job(check_upcoming_event_reminders, "interval", minutes=30)
     scheduler.start()
     app.state.scheduler = scheduler
     logger.info("AZVIO startup complete: admins seeded, indexes created, daily reminders scheduled 08:00 Riyadh")
