@@ -1227,8 +1227,10 @@ async def delete_testimonial(testimonial_id: str):
 # ============ تخصيص الرئيسية (طلب #11) ============
 
 class HomeLayoutUpdate(BaseModel):
-    order: list[str]  # ترتيب مفاتيح الأزرار المطلوب
+    order: list[str]  # ترتيب مفاتيح الأزرار المطلوب (يشمل الأزرار الافتراضية + المخصصة custom:id)
     hidden: list[str] = []  # مفاتيح الأزرار المخفية
+    sizes: dict[str, str] = {}  # حجم كل بطاقة: small | medium | large (طلب: تحكم بحجم/شكل كل بطاقة)
+    custom: list[dict] = []  # بطاقات مخصصة حرة {id, title, icon, target} يضيفها المستخدم بنفسه
 
 
 @router.get("/home/layout")
@@ -1239,6 +1241,8 @@ async def get_home_layout(user: dict = Depends(get_current_user)):
     return {
         "order": doc.get("home_order", []),
         "hidden": doc.get("home_hidden", []),
+        "sizes": doc.get("home_sizes", {}),
+        "custom": doc.get("home_custom", []),
     }
 
 
@@ -1249,8 +1253,68 @@ async def update_home_layout(body: HomeLayoutUpdate, user: dict = Depends(get_cu
         {"$set": {
             "home_order": body.order,
             "home_hidden": body.hidden,
+            "home_sizes": body.sizes,
+            "home_custom": body.custom,
             "updated_at": now_iso(),
         }},
         upsert=True,
     )
     return {"ok": True}
+
+
+# ============ تحليلات موسّعة — العملاء والمشاريع (طلب: تحليلات كثيرة موسّعة) ============
+
+@router.get("/analytics/clients-extended")
+async def analytics_clients_extended():
+    """تحليلات أعمق للعملاء والمشاريع: توزيع المصادر، معدل التسليم، ومتوسط مدة
+    التنفيذ (من الحجز للتسليم) — كلها من بيانات موجودة فعلاً بدون حقول جديدة."""
+    clients = await db.clients.find(
+        {}, {"_id": 0, "source": 1, "status": 1, "stage": 1, "created_at": 1, "updated_at": 1, "sub_category": 1, "service_type": 1}
+    ).to_list(5000)
+
+    total = len(clients)
+    delivered = [c for c in clients if c.get("status") == "delivered"]
+
+    # توزيع المصادر (انستقرام، تويتر، إحالة...) — نتجاهل الفاضي
+    source_breakdown: dict = {}
+    for c in clients:
+        src = (c.get("source") or "").strip() or "غير محدد"
+        source_breakdown[src] = source_breakdown.get(src, 0) + 1
+    top_sources = sorted(source_breakdown.items(), key=lambda x: -x[1])[:8]
+
+    # توزيع الفئات الفرعية (عقاري، فعاليات...)
+    category_breakdown: dict = {}
+    for c in clients:
+        cat = (c.get("sub_category") or "").strip() or "أخرى"
+        category_breakdown[cat] = category_breakdown.get(cat, 0) + 1
+    top_categories = sorted(category_breakdown.items(), key=lambda x: -x[1])[:8]
+
+    # متوسط مدة التنفيذ للمشاريع المُسلّمة (من إنشاء المشروع لآخر تحديث حالته لـ delivered)
+    durations = []
+    for c in delivered:
+        try:
+            created = datetime.fromisoformat(c["created_at"].replace("Z", "+00:00"))
+            updated = datetime.fromisoformat(c["updated_at"].replace("Z", "+00:00"))
+            days = (updated - created).total_seconds() / 86400
+            if 0 <= days <= 365:  # نتجاهل القيم الشاذة (بيانات قديمة قبل تتبع الحالة مثلاً)
+                durations.append(days)
+        except Exception:
+            continue
+    avg_turnaround_days = round(sum(durations) / len(durations), 1) if durations else None
+
+    # توزيع حسب مرحلة العمل الحالية (للمشاريع الجارية)
+    stage_breakdown: dict = {}
+    for c in clients:
+        if c.get("status") != "delivered":
+            st = c.get("stage") or "booked"
+            stage_breakdown[st] = stage_breakdown.get(st, 0) + 1
+
+    return {
+        "total_clients": total,
+        "delivered_count": len(delivered),
+        "delivery_rate": round(len(delivered) / total * 100, 1) if total else 0,
+        "avg_turnaround_days": avg_turnaround_days,
+        "top_sources": [{"source": s, "count": n} for s, n in top_sources],
+        "top_categories": [{"category": c, "count": n} for c, n in top_categories],
+        "in_progress_by_stage": stage_breakdown,
+    }

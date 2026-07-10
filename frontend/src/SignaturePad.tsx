@@ -14,11 +14,9 @@ export function SignaturePad({ onSave, onCancel, height = 220 }: Props) {
   const currentPath = useRef('');
   const [, forceRender] = useState(0);
   const rafScheduled = useRef(false);
-  // نلتقط مقاس لوحة الرسم الفعلي وقت التوقيع (يختلف حسب الجهاز/المتصفح) عشان
-  // نقدر نعيد رسم التوقيع بنفس النسب لاحقاً بغض النظر عن حجم الشاشة اللي يُعرض فيها
-  // (طلب: التوقيع من رابط العميل ما يطلع شكله صح بالتطبيق).
-  const layout = useRef({ w: 0, h: 0 });
 
+  // بدل ما نعيد الرسم مع كل نقطة لمس (يحدث عشرات المرات بالثانية ويسبب تقطّع الخط
+  // على الأجهزة الأبطأ)، نجمّع كل التحديثات السريعة ونعيد الرسم مرة وحدة بالفريم فقط.
   const scheduleRender = () => {
     if (rafScheduled.current) return;
     rafScheduled.current = true;
@@ -60,23 +58,32 @@ export function SignaturePad({ onSave, onCancel, height = 220 }: Props) {
   const save = () => {
     const all = [...paths, currentPath.current].filter(Boolean).join(' ');
     if (!all) return;
-    // نحفظ المسار مع أبعاد اللوحة وقت الرسم — عشان العرض لاحقاً (بأي مقاس شاشة)
-    // يقدر يحسب viewBox صحيح ويعرض التوقيع بنفس نسبته الأصلية بدل ما يطلع مقطوع.
-    const payload = JSON.stringify({ d: all, w: Math.round(layout.current.w) || 300, h: Math.round(layout.current.h) || height });
-    onSave(payload);
+
+    // نستخرج كل نقاط X,Y من مسار الرسم نفسه ونحسب صندوقها الحقيقي (bounding box) —
+    // هذا مضمون 100٪ لأنه من نفس بيانات الرسم، بعكس قياس الشاشة (onLayout) اللي ممكن
+    // يرجّع صفر أو رقم غلط جوه ScrollView/Modal (طلب: إصلاح التوقيع الفاضي من البوابة).
+    const nums = all.match(/-?\d+(\.\d+)?/g)?.map(Number) || [];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      const x = nums[i], y = nums[i + 1];
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 300; maxY = height; }
+
+    const pad = 8; // هامش بسيط حول التوقيع عشان حواف الخط ما تنقص
+    const vb = `${(minX - pad).toFixed(1)} ${(minY - pad).toFixed(1)} ${(maxX - minX + pad * 2).toFixed(1)} ${(maxY - minY + pad * 2).toFixed(1)}`;
+
+    onSave(JSON.stringify({ d: all, viewBox: vb }));
   };
 
   const hasContent = paths.length > 0 || !!currentPath.current;
 
   return (
     <View>
-      <View
-        style={[styles.canvas, { height }]}
-        onLayout={(e) => {
-          layout.current = { w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height };
-        }}
-        {...panResponder.panHandlers}
-      >
+      <View style={[styles.canvas, { height }]} {...panResponder.panHandlers}>
         <Svg width="100%" height="100%">
           {paths.map((d, i) => (
             <Path key={i} d={d} stroke={C.onSurface} strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -105,8 +112,9 @@ export function SignaturePad({ onSave, onCancel, height = 220 }: Props) {
 }
 
 /** Renders a previously-saved signature (the path-data string from onSave).
- * يدعم الصيغة الجديدة JSON {d, w, h} مع viewBox صحيح، وأيضاً الصيغة القديمة
- * (مسار خام بدون أبعاد) للتوقيعات المحفوظة قبل هذا الإصلاح. */
+ * يدعم الصيغة الجديدة JSON {d, viewBox} — viewBox محسوب من حدود الرسم الفعلية
+ * وقت التوقيع، فيعرض التوقيع كامل ومتناسب بأي مقاس صندوق عرض. وأيضاً يدعم الصيغة
+ * القديمة (مسار خام بدون viewBox) للتوقيعات المحفوظة قبل هذا الإصلاح. */
 export function SignatureView({ pathData, height = 100 }: { pathData: string; height?: number }) {
   let d = pathData;
   let viewBox: string | undefined;
@@ -114,7 +122,7 @@ export function SignatureView({ pathData, height = 100 }: { pathData: string; he
     const parsed = JSON.parse(pathData);
     if (parsed && typeof parsed.d === 'string') {
       d = parsed.d;
-      viewBox = `0 0 ${parsed.w || 300} ${parsed.h || height}`;
+      viewBox = parsed.viewBox || undefined;
     }
   } catch {
     // صيغة قديمة (مسار خام) — نعرضه كما هو بدون viewBox، بنفس السلوك السابق

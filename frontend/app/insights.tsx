@@ -41,12 +41,16 @@ type Insight = {
 
 export default function InsightsScreen() {
   const [data, setData] = useState<Insight | null>(null);
+  const [clientAnalytics, setClientAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setData(await api('/insights/weekly'));
+    } catch {}
+    try {
+      setClientAnalytics(await api('/analytics/clients-extended'));
     } catch {}
     setLoading(false);
   }, []);
@@ -211,6 +215,71 @@ export default function InsightsScreen() {
               </View>
             )}
 
+            {/* تحليلات العملاء والمشاريع الموسّعة */}
+            {!!clientAnalytics && (
+              <View style={styles.listCard}>
+                <View style={styles.listHeader}>
+                  <Ionicons name="bar-chart-outline" size={18} color={C.brand} />
+                  <Text style={styles.listTitle}>تحليلات العملاء والمشاريع</Text>
+                </View>
+
+                <View style={styles.metricGrid}>
+                  <MetricCard
+                    icon="checkmark-done-circle"
+                    iconColor={C.success}
+                    value={`${clientAnalytics.delivery_rate}٪`}
+                    label="معدل التسليم"
+                  />
+                  <MetricCard
+                    icon="time"
+                    iconColor={C.brand}
+                    value={clientAnalytics.avg_turnaround_days != null ? `${clientAnalytics.avg_turnaround_days} يوم` : '—'}
+                    label="متوسط مدة التنفيذ"
+                  />
+                </View>
+
+                {clientAnalytics.top_sources?.length > 0 && (
+                  <>
+                    <Text style={styles.subSectionTitle}>مصادر العملاء</Text>
+                    {clientAnalytics.top_sources.map((s: any) => (
+                      <View key={s.source} style={styles.barRow}>
+                        <Text style={styles.barLabel}>{s.source}</Text>
+                        <View style={styles.barTrack}>
+                          <View
+                            style={[
+                              styles.barFill,
+                              { width: `${Math.min(100, (s.count / clientAnalytics.top_sources[0].count) * 100)}%` },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.barCount}>{s.count}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+
+                {clientAnalytics.top_categories?.length > 0 && (
+                  <>
+                    <Text style={styles.subSectionTitle}>الفئات الأكثر طلباً</Text>
+                    {clientAnalytics.top_categories.map((c: any) => (
+                      <View key={c.category} style={styles.barRow}>
+                        <Text style={styles.barLabel}>{c.category}</Text>
+                        <View style={styles.barTrack}>
+                          <View
+                            style={[
+                              styles.barFill,
+                              { width: `${Math.min(100, (c.count / clientAnalytics.top_categories[0].count) * 100)}%`, backgroundColor: '#16808A' },
+                            ]}
+                          />
+                        </View>
+                        <Text style={styles.barCount}>{c.count}</Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+              </View>
+            )}
+
             <Text style={styles.footerNote}>
               💡 هذه الرؤى تُولَّد لحظياً بواسطة سند. سيصلك إشعار كل سبت تلقائياً بعد نشر التطبيق على جوالك.
             </Text>
@@ -260,6 +329,12 @@ function MetricCard({
 }
 
 const styles = StyleSheet.create({
+  subSectionTitle: { fontFamily: F.semibold, fontSize: 12, color: C.onSurface2, textAlign: 'right', marginTop: 14, marginBottom: 8 },
+  barRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 8 },
+  barLabel: { width: 80, fontFamily: F.regular, fontSize: 11, color: C.onSurface, textAlign: 'right' },
+  barTrack: { flex: 1, height: 8, backgroundColor: C.surface2, borderRadius: 4, overflow: 'hidden' },
+  barFill: { height: 8, backgroundColor: C.brand, borderRadius: 4 },
+  barCount: { width: 24, fontFamily: F.semibold, fontSize: 11, color: C.onSurface2, textAlign: 'left' },
   loading: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, gap: 12 },
   loadingText: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'center' },
   periodBadge: {

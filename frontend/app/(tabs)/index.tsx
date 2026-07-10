@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
+  Linking,
   Platform,
   RefreshControl,
   ScrollView,
@@ -213,6 +214,8 @@ export default function Dashboard() {
       const layout = await api('/home/layout');
       setHomeOrder(layout?.order ?? []);
       setHomeHidden(layout?.hidden ?? []);
+      setHomeSizes(layout?.sizes ?? {});
+      setHomeCustom(layout?.custom ?? []);
     } catch {}
   }, []);
 
@@ -256,10 +259,22 @@ export default function Dashboard() {
   // الأقسام المسموح لدور المستخدم يشوفها — تُجلب من الباك اند (طلب #17)
   const [homeOrder, setHomeOrder] = useState<string[]>([]);
   const [homeHidden, setHomeHidden] = useState<string[]>([]);
+  const [homeSizes, setHomeSizes] = useState<Record<string, string>>({});
+  const [homeCustom, setHomeCustom] = useState<{ id: string; title: string; icon: string; target: string }[]>([]);
+
+  // البطاقات المخصصة اللي يضيفها المستخدم بنفسه (رابط خارجي أو مسار داخل التطبيق)
+  const customCards = homeCustom.map((c) => ({
+    key: `custom:${c.id}`,
+    title: c.title,
+    sub: 'بطاقة مخصصة',
+    icon: 'link' as const,
+    href: c.target,
+    isExternal: /^https?:\/\//.test(c.target),
+  }));
 
   // الأقسام المسموح لدور المستخدم يشوفها (صلاحية) + الترتيب/الإخفاء المخصص (تفضيل شخصي، طلب #11)
-  const navCards = allCards
-    .filter((c) => allowedSections.includes(c.key) && !homeHidden.includes(c.key))
+  const navCards = [...allCards.filter((c) => allowedSections.includes(c.key)), ...customCards]
+    .filter((c) => !homeHidden.includes(c.key))
     .sort((a, b) => {
       const ia = homeOrder.indexOf(a.key);
       const ib = homeOrder.indexOf(b.key);
@@ -268,6 +283,8 @@ export default function Dashboard() {
       if (ib === -1) return -1;
       return ia - ib;
     });
+
+  const SIZE_WIDTH: Record<string, string> = { small: '31%', medium: '47.8%', large: '100%' };
 
   // Chart data prep
   const chartWidth = Math.min(width - 32 - 16, 520); // container padding + card padding
@@ -477,9 +494,15 @@ export default function Dashboard() {
                   {navCards.map((c) => (
                     <TouchableOpacity
                       key={c.title}
-                      style={styles.navCard}
-                      onPress={() => router.push(c.href as any)}
-                      testID={`nav-${c.href.slice(1)}`}
+                      style={[styles.navCard, { width: SIZE_WIDTH[homeSizes[c.key] || 'medium'] }]}
+                      onPress={() => {
+                        if ((c as any).isExternal) {
+                          Linking.openURL(c.href);
+                        } else {
+                          router.push(c.href as any);
+                        }
+                      }}
+                      testID={`nav-${c.href.replace(/[^a-zA-Z0-9]/g, '')}`}
                     >
                       <View style={styles.navIcon}>
                         <Ionicons name={c.icon} size={22} color={C.brand} />

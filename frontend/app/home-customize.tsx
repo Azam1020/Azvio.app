@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacit
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
-import { ScreenHeader } from '@/src/ui';
+import { AppModal, Field, ScreenHeader } from '@/src/ui';
 import { C, F, R, shadow } from '@/src/theme';
 
 const ALL_CARDS = [
@@ -27,15 +27,23 @@ export default function HomeCustomizeScreen() {
   const [saving, setSaving] = useState(false);
   const [order, setOrder] = useState<string[]>(ALL_CARDS.map((c) => c.key));
   const [hidden, setHidden] = useState<string[]>([]);
+  const [sizes, setSizes] = useState<Record<string, string>>({});
+  const [custom, setCustom] = useState<{ id: string; title: string; icon: string; target: string }[]>([]);
+  const [addCustomModal, setAddCustomModal] = useState(false);
+  const [newCustom, setNewCustom] = useState({ title: '', target: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await api('/home/layout');
+      const custom: { id: string; title: string; icon: string; target: string }[] = r?.custom ?? [];
+      setCustom(custom);
+      const allKeys = [...ALL_CARDS.map((c) => c.key), ...custom.map((c) => `custom:${c.id}`)];
       const savedOrder: string[] = r?.order ?? [];
-      const missing = ALL_CARDS.map((c) => c.key).filter((k) => !savedOrder.includes(k));
-      setOrder(savedOrder.length ? [...savedOrder, ...missing] : ALL_CARDS.map((c) => c.key));
+      const missing = allKeys.filter((k) => !savedOrder.includes(k));
+      setOrder(savedOrder.length ? [...savedOrder, ...missing] : allKeys);
       setHidden(r?.hidden ?? []);
+      setSizes(r?.sizes ?? {});
     } catch {}
     setLoading(false);
   }, []);
@@ -59,10 +67,32 @@ export default function HomeCustomizeScreen() {
     setHidden((h) => (h.includes(key) ? h.filter((k) => k !== key) : [...h, key]));
   };
 
+  const SIZE_CYCLE = ['medium', 'small', 'large'];
+  const cycleSize = (key: string) => {
+    const current = sizes[key] || 'medium';
+    const next = SIZE_CYCLE[(SIZE_CYCLE.indexOf(current) + 1) % SIZE_CYCLE.length];
+    setSizes((s) => ({ ...s, [key]: next }));
+  };
+
+  const addCustomCard = () => {
+    if (!newCustom.title.trim() || !newCustom.target.trim()) return;
+    const id = Math.random().toString(36).slice(2);
+    setCustom((c) => [...c, { id, title: newCustom.title.trim(), icon: 'link', target: newCustom.target.trim() }]);
+    setOrder((o) => [...o, `custom:${id}`]);
+    setNewCustom({ title: '', target: '' });
+    setAddCustomModal(false);
+  };
+
+  const removeCustomCard = (id: string) => {
+    setCustom((c) => c.filter((cc) => cc.id !== id));
+    setOrder((o) => o.filter((k) => k !== `custom:${id}`));
+    setHidden((h) => h.filter((k) => k !== `custom:${id}`));
+  };
+
   const save = async () => {
     setSaving(true);
     try {
-      await api('/home/layout', { method: 'PUT', body: JSON.stringify({ order, hidden }) });
+      await api('/home/layout', { method: 'PUT', body: JSON.stringify({ order, hidden, sizes, custom }) });
       Alert.alert('تم الحفظ', '✅ الرئيسية صارت مرتبة على مزاجك');
     } catch (e: any) {
       Alert.alert('خطأ', e?.message || 'تعذّر الحفظ');
@@ -73,6 +103,8 @@ export default function HomeCustomizeScreen() {
   const reset = () => {
     setOrder(ALL_CARDS.map((c) => c.key));
     setHidden([]);
+    setSizes({});
+    setCustom([]);
   };
 
   if (loading) {
@@ -83,16 +115,21 @@ export default function HomeCustomizeScreen() {
     );
   }
 
-  const orderedCards = order.map((k) => ALL_CARDS.find((c) => c.key === k)).filter(Boolean) as typeof ALL_CARDS;
+  const customAsCards = custom.map((c) => ({ key: `custom:${c.id}`, title: c.title, icon: 'link' as const, isCustom: true, customId: c.id }));
+  const allCards = [...ALL_CARDS.map((c) => ({ ...c, isCustom: false })), ...customAsCards];
+  const orderedCards = order.map((k) => allCards.find((c) => c.key === k)).filter(Boolean) as typeof allCards;
+
+  const SIZE_LABEL: Record<string, string> = { small: 'صغير', medium: 'متوسط', large: 'كبير' };
 
   return (
     <View style={styles.container}>
       <ScreenHeader title="تخصيص الرئيسية" subtitle="رتّب الأزرار وأخفِ الي ما تحتاجه" canBack />
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.hint}>اسحب بالأسهم لترتيب الأزرار، واضغط العين لإخفاء أي زر من الرئيسية.</Text>
+        <Text style={styles.hint}>اسحب بالأسهم لترتيب الأزرار، اضغط العين للإخفاء، واضغط الحجم لتكبير/تصغير البطاقة.</Text>
 
         {orderedCards.map((c, idx) => {
           const isHidden = hidden.includes(c.key);
+          const size = sizes[c.key] || 'medium';
           return (
             <View key={c.key} style={[styles.row, isHidden && styles.rowHidden]}>
               <View style={styles.arrows}>
@@ -104,8 +141,18 @@ export default function HomeCustomizeScreen() {
                 </TouchableOpacity>
               </View>
 
-              <Ionicons name={c.icon} size={20} color={isHidden ? C.muted : C.onSurface} style={{ marginHorizontal: 12 }} />
+              <Ionicons name={c.icon as any} size={20} color={isHidden ? C.muted : C.onSurface} style={{ marginHorizontal: 12 }} />
               <Text style={[styles.rowTitle, isHidden && styles.rowTitleHidden]}>{c.title}</Text>
+
+              <TouchableOpacity onPress={() => cycleSize(c.key)} style={styles.sizeBtn} hitSlop={6}>
+                <Text style={styles.sizeBtnText}>{SIZE_LABEL[size]}</Text>
+              </TouchableOpacity>
+
+              {(c as any).isCustom && (
+                <TouchableOpacity onPress={() => removeCustomCard((c as any).customId)} hitSlop={8} style={{ marginHorizontal: 4 }}>
+                  <Ionicons name="trash-outline" size={18} color={C.error} />
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity onPress={() => toggleHidden(c.key)} hitSlop={8}>
                 <Ionicons name={isHidden ? 'eye-off-outline' : 'eye-outline'} size={20} color={isHidden ? C.muted : C.brand} />
@@ -113,6 +160,11 @@ export default function HomeCustomizeScreen() {
             </View>
           );
         })}
+
+        <TouchableOpacity style={styles.addCustomBtn} onPress={() => setAddCustomModal(true)}>
+          <Ionicons name="add-circle-outline" size={18} color={C.brand} />
+          <Text style={styles.addCustomText}>إضافة بطاقة مخصصة (رابط أو شاشة)</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.resetBtn} onPress={reset}>
           <Text style={styles.resetText}>إرجاع الترتيب الافتراضي</Text>
@@ -122,6 +174,23 @@ export default function HomeCustomizeScreen() {
           {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>حفظ الترتيب</Text>}
         </TouchableOpacity>
       </ScrollView>
+
+      <AppModal
+        visible={addCustomModal}
+        title="بطاقة مخصصة جديدة"
+        onClose={() => setAddCustomModal(false)}
+        onSave={addCustomCard}
+        saveLabel="إضافة"
+      >
+        <Field label="اسم البطاقة" value={newCustom.title} onChangeText={(v) => setNewCustom({ ...newCustom, title: v })} placeholder="مثال: مجلد العقود" />
+        <Field
+          label="الوجهة (رابط أو مسار شاشة داخل التطبيق)"
+          value={newCustom.target}
+          onChangeText={(v) => setNewCustom({ ...newCustom, target: v })}
+          placeholder="https://... أو /clients"
+          autoCapitalize="none"
+        />
+      </AppModal>
     </View>
   );
 }
@@ -144,6 +213,10 @@ const styles = StyleSheet.create({
   arrows: { gap: 2 },
   rowTitle: { flex: 1, fontFamily: F.semibold, fontSize: 14, color: C.onSurface, textAlign: 'right' },
   rowTitleHidden: { color: C.muted, textDecorationLine: 'line-through' },
+  sizeBtn: { backgroundColor: C.surface2, borderRadius: R.sm, paddingHorizontal: 10, paddingVertical: 5, marginHorizontal: 4 },
+  sizeBtnText: { fontFamily: F.semibold, fontSize: 11, color: C.onSurface2 },
+  addCustomBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: 12, marginTop: 4 },
+  addCustomText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
   resetBtn: { alignItems: 'center', paddingVertical: 12, marginTop: 8 },
   resetText: { fontFamily: F.semibold, fontSize: 13, color: C.muted },
   saveBtn: { backgroundColor: C.brand, borderRadius: R.lg, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
