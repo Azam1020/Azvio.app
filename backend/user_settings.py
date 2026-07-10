@@ -10,10 +10,9 @@ from database import db
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
-DEFAULT_WIDGETS_ORDER = ["stats", "incomeChart", "contentChart", "nav", "events"]
+DEFAULT_WIDGETS_ORDER = ["stats", "contentChart", "nav", "events"]
 DEFAULT_WIDGETS_VISIBLE: Dict[str, bool] = {
     "stats": True,
-    "incomeChart": True,
     "contentChart": True,
     "nav": True,
     "events": True,

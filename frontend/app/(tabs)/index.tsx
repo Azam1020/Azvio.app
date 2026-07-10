@@ -68,13 +68,12 @@ const shortMonth = (ym: string) => {
   return AR_MONTHS[(m - 1) % 12].slice(0, 4);
 };
 
-type WidgetKey = 'stats' | 'incomeChart' | 'contentChart' | 'nav' | 'events';
+type WidgetKey = 'stats' | 'contentChart' | 'nav' | 'events';
 
-const DEFAULT_ORDER: WidgetKey[] = ['stats', 'incomeChart', 'contentChart', 'nav', 'events'];
+const DEFAULT_ORDER: WidgetKey[] = ['stats', 'contentChart', 'nav', 'events'];
 
 const DEFAULT_VISIBLE: Record<WidgetKey, boolean> = {
   stats: true,
-  incomeChart: true,
   contentChart: true,
   nav: true,
   events: true,
@@ -82,7 +81,6 @@ const DEFAULT_VISIBLE: Record<WidgetKey, boolean> = {
 
 const WIDGET_META: Record<WidgetKey, { label: string; icon: any }> = {
   stats: { label: 'إحصائيات سريعة', icon: 'stats-chart' },
-  incomeChart: { label: 'رسم الدخل والمصاريف', icon: 'bar-chart' },
   contentChart: { label: 'توزيع المحتوى', icon: 'pie-chart' },
   nav: { label: 'أزرار الأقسام', icon: 'apps' },
   events: { label: 'المواعيد القادمة', icon: 'calendar' },
@@ -90,121 +88,127 @@ const WIDGET_META: Record<WidgetKey, { label: string; icon: any }> = {
 
 // مجمع الإحصائيات القابلة للاختيار المدقق بالرئيسية (طلب: اختيار مدقق بالإحصائيات
 // والتحاليل) — كل واحدة مرتبطة بحقل من استجابة /dashboard.
-const STATS_META: Record<string, { title: string; icon: any; getValue: (d: any) => string; accent?: boolean; color?: string }> = {
-  month_income: { title: 'دخل هذا الشهر', icon: 'trending-up', getValue: (d) => fmt(d?.month_income || 0), accent: true },
-  month_expenses: { title: 'مصاريف الشهر', icon: 'trending-down', getValue: (d) => fmt(d?.month_expenses || 0), color: C.error },
-  net_profit: { title: 'صافي الربح', icon: 'wallet', getValue: (d) => fmt(d?.net_profit ?? (d?.month_income || 0) - (d?.month_expenses || 0)), color: C.success },
-  clients_in_progress: { title: 'مشاريع قيد التنفيذ', icon: 'hourglass', getValue: (d) => String(d?.clients_in_progress ?? 0), color: C.warning },
-  clients_delivered: { title: 'مشاريع مُسلّمة', icon: 'checkmark-circle', getValue: (d) => String(d?.clients_delivered ?? 0), color: C.success },
-  clients_total: { title: 'إجمالي العملاء', icon: 'people', getValue: (d) => String(d?.clients_total ?? 0), color: C.brand },
-  delivery_rate: { title: 'معدل التسليم', icon: 'speedometer', getValue: (d) => `${d?.delivery_rate ?? 0}٪`, color: C.brand },
-  repeat_clients: { title: 'عملاء متكررون', icon: 'repeat', getValue: (d) => String(d?.repeat_clients ?? 0), color: C.brand },
-  tasks_overdue: { title: 'مهام متأخرة', icon: 'alert-circle', getValue: (d) => String(d?.tasks_overdue ?? 0), color: C.error },
-  tasks_completion_rate: { title: 'معدل إنجاز المهام', icon: 'checkbox', getValue: (d) => `${d?.tasks_completion_rate ?? 0}٪`, color: C.brand },
-  tasks_pending: { title: 'مهام متبقية', icon: 'list', getValue: (d) => String(d?.tasks_pending ?? 0), color: C.warning },
-  upcoming_events_count: { title: 'المواعيد القادمة', icon: 'calendar', getValue: (d) => String(d?.upcoming_events_count ?? 0), color: C.brand },
-  events_today_count: { title: 'مواعيد اليوم', icon: 'today', getValue: (d) => String(d?.events_today_count ?? 0), color: C.brand },
-  sanad_alerts_count: { title: 'تنبيهات سند', icon: 'sparkles', getValue: (d) => String(d?.sanad_alerts_count ?? 0), color: C.brand },
+const STATS_META: Record<string, { title: string; icon: any; getValue: (d: any) => string; accent?: boolean; color?: string; group: string }> = {
+  month_income: { title: 'دخل هذا الشهر', icon: 'trending-up', getValue: (d) => fmt(d?.month_income || 0), accent: true, group: 'المالية' },
+  month_expenses: { title: 'مصاريف الشهر', icon: 'trending-down', getValue: (d) => fmt(d?.month_expenses || 0), color: C.error, group: 'المالية' },
+  net_profit: { title: 'صافي الربح', icon: 'wallet', getValue: (d) => fmt(d?.net_profit ?? (d?.month_income || 0) - (d?.month_expenses || 0)), color: C.success, group: 'المالية' },
+  clients_in_progress: { title: 'مشاريع قيد التنفيذ', icon: 'hourglass', getValue: (d) => String(d?.clients_in_progress ?? 0), color: C.warning, group: 'العملاء' },
+  clients_delivered: { title: 'مشاريع مُسلّمة', icon: 'checkmark-circle', getValue: (d) => String(d?.clients_delivered ?? 0), color: C.success, group: 'العملاء' },
+  clients_total: { title: 'إجمالي العملاء', icon: 'people', getValue: (d) => String(d?.clients_total ?? 0), color: C.brand, group: 'العملاء' },
+  delivery_rate: { title: 'معدل التسليم', icon: 'speedometer', getValue: (d) => `${d?.delivery_rate ?? 0}٪`, color: C.brand, group: 'العملاء' },
+  repeat_clients: { title: 'عملاء متكررون', icon: 'repeat', getValue: (d) => String(d?.repeat_clients ?? 0), color: C.brand, group: 'العملاء' },
+  tasks_overdue: { title: 'مهام متأخرة', icon: 'alert-circle', getValue: (d) => String(d?.tasks_overdue ?? 0), color: C.error, group: 'المهام' },
+  tasks_completion_rate: { title: 'معدل إنجاز المهام', icon: 'checkbox', getValue: (d) => `${d?.tasks_completion_rate ?? 0}٪`, color: C.brand, group: 'المهام' },
+  tasks_pending: { title: 'مهام متبقية', icon: 'list', getValue: (d) => String(d?.tasks_pending ?? 0), color: C.warning, group: 'المهام' },
+  upcoming_events_count: { title: 'المواعيد القادمة', icon: 'calendar', getValue: (d) => String(d?.upcoming_events_count ?? 0), color: C.brand, group: 'التقويم' },
+  events_today_count: { title: 'مواعيد اليوم', icon: 'today', getValue: (d) => String(d?.events_today_count ?? 0), color: C.brand, group: 'التقويم' },
+  sanad_alerts_count: { title: 'تنبيهات سند', icon: 'sparkles', getValue: (d) => String(d?.sanad_alerts_count ?? 0), color: C.brand, group: 'سند' },
 };
+const GROUP_ORDER = ['المالية', 'العملاء', 'المهام', 'التقويم', 'سند'];
+const GROUP_ICON: Record<string, any> = { المالية: 'wallet', العملاء: 'people', المهام: 'checkbox', التقويم: 'calendar', سند: 'sparkles' };
 
 const PREFS_CACHE_KEY = 'azvio_dashboard_prefs_v2';
 
-/** بطاقة إحصائية كبيرة واحدة تُلَف يمين/يسار بين كل الإحصائيات المختارة —
- * بدل شبكة ثابتة، عشان تكون تجربة "قيادة" (command center) بدل أرقام متناثرة
- * (طلب: بطاقة المبلغ الكبيرة تكون قابلة للّف بين الإحصائيات). البطاقات المالية
- * (دخل/مصاريف/ربح) تعرض كمان نسبة التغيّر عن الشهر اللي فات وخط اتجاه بسيط. */
+/** بطاقة كبيرة تُلَف يمين/يسار — بس **صفحة واحدة لكل قسم** (مالية/عملاء/مهام/
+ * تقويم/سند) بدل صفحة لكل رقم لحاله، عشان اللف يكون بحدود ٣-٥ مرات بالكثير
+ * مو ١٤ (طلب: كل شوي ألف يمين يسار تعبني). كل صفحة فيها كل إحصائيات نفس
+ * القسم مع سطر ملاحظة قصير. */
 function StatsCarousel({ keys, data, series }: { keys: string[]; data: any; series: Series | null }) {
   const { width: screenW } = useWindowDimensions();
-  const cardW = screenW - 32; // نفس هوامش الصفحة (padding: 16 من كل جهة)
+  const cardW = screenW - 32;
   const [activeIdx, setActiveIdx] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
 
-  const validKeys = keys.filter((k) => STATS_META[k]);
-  if (!validKeys.length) return null;
+  const pages = GROUP_ORDER.map((group) => ({
+    group,
+    statKeys: keys.filter((k) => STATS_META[k]?.group === group),
+  })).filter((p) => p.statKeys.length > 0);
+
+  if (!pages.length) return null;
 
   const onScrollEnd = (e: any) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / cardW);
-    setActiveIdx(Math.max(0, Math.min(validKeys.length - 1, idx)));
+    setActiveIdx(Math.max(0, Math.min(pages.length - 1, idx)));
   };
 
-  // للبطاقات المالية (دخل/مصاريف/ربح) نحسب نسبة التغيّر عن الشهر السابق ونبني
-  // نقاط خط اتجاه بسيط من آخر 6 أشهر — يحتاج بيانات السلسلة الزمنية.
-  const financialSeries: Record<string, number[] | undefined> = {
-    month_income: series?.income,
-    month_expenses: series?.expense,
-    net_profit: series?.income?.map((v, i) => v - (series?.expense?.[i] || 0)),
-  };
-
-  const getTrend = (statKey: string) => {
-    const arr = financialSeries[statKey];
+  const trendFor = (statKey: string) => {
+    const map: Record<string, number[] | undefined> = {
+      month_income: series?.income,
+      month_expenses: series?.expense,
+      net_profit: series?.income?.map((v, i) => v - (series?.expense?.[i] || 0)),
+    };
+    const arr = map[statKey];
     if (!arr || arr.length < 2) return null;
     const last = arr[arr.length - 1];
     const prev = arr[arr.length - 2];
-    const pct = prev !== 0 ? Math.round(((last - prev) / Math.abs(prev)) * 100) : null;
-    return { points: arr.slice(-6), pct };
+    return prev !== 0 ? Math.round(((last - prev) / Math.abs(prev)) * 100) : null;
+  };
+
+  const insightFor = (group: string): string => {
+    if (group === 'المالية') {
+      const net = data?.net_profit ?? (data?.month_income || 0) - (data?.month_expenses || 0);
+      return net >= 0 ? `سند: صافي ربحك ${fmt(net)} هالشهر — استمر` : `سند: مصاريفك أعلى من دخلك هالشهر، راجع البنود`;
+    }
+    if (group === 'العملاء') {
+      return data?.delivery_rate >= 70 ? `سند: معدل تسليمك ممتاز (${data?.delivery_rate}٪)` : `سند: ${data?.clients_in_progress ?? 0} مشروع لسا قيد التنفيذ`;
+    }
+    if (group === 'المهام') {
+      return data?.tasks_overdue > 0 ? `سند: عندك ${data?.tasks_overdue} مهمة متأخرة — ابدأ فيها أول` : `سند: ما فيه مهام متأخرة، أداء ممتاز`;
+    }
+    if (group === 'التقويم') {
+      return data?.events_today_count > 0 ? `سند: عندك ${data?.events_today_count} موعد اليوم` : `سند: ما فيه مواعيد اليوم`;
+    }
+    return data?.sanad_alerts_count > 0 ? `سند: عندك ${data?.sanad_alerts_count} تحليل واتساب ينتظر مراجعتك` : `سند: كل شي متابَع، ما فيه تنبيهات`;
   };
 
   return (
     <View style={{ marginBottom: 16 }}>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onScrollEnd}
-        decelerationRate="fast"
-      >
-        {validKeys.map((statKey) => {
-          const meta = STATS_META[statKey];
-          const trend = getTrend(statKey);
+      <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onScrollEnd} decelerationRate="fast">
+        {pages.map(({ group, statKeys }) => {
+          const isFinancial = group === 'المالية';
           return (
-            <View key={statKey} style={[styles.heroStatCard, { width: cardW, backgroundColor: meta.accent ? C.brand : C.surface }]}>
-              <View pointerEvents="none" style={[styles.statBracket, styles.statBracketTL, meta.accent && { borderColor: 'rgba(255,255,255,0.5)' }]} />
-              <View pointerEvents="none" style={[styles.statBracket, styles.statBracketBR, meta.accent && { borderColor: 'rgba(255,255,255,0.5)' }]} />
-              <View style={{ width: '100%', flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <Ionicons name={meta.icon} size={22} color={meta.accent ? 'rgba(255,255,255,0.85)' : meta.color || C.onSurface} />
-                {trend?.pct != null && (
-                  <View style={styles.trendBadge}>
-                    <Ionicons name={trend.pct >= 0 ? 'arrow-up' : 'arrow-down'} size={11} color={meta.accent ? '#9FE1CB' : trend.pct >= 0 ? C.success : C.error} />
-                    <Text style={[styles.trendBadgeText, { color: meta.accent ? '#9FE1CB' : trend.pct >= 0 ? C.success : C.error }]}>
-                      {Math.abs(trend.pct)}٪ عن الشهر اللي فات
-                    </Text>
-                  </View>
-                )}
+            <View key={group} style={[styles.heroStatCard, { width: cardW, backgroundColor: isFinancial ? C.brand : C.surface }]}>
+              <View pointerEvents="none" style={[styles.statBracket, styles.statBracketTL, isFinancial && { borderColor: 'rgba(255,255,255,0.5)' }]} />
+              <View pointerEvents="none" style={[styles.statBracket, styles.statBracketBR, isFinancial && { borderColor: 'rgba(255,255,255,0.5)' }]} />
+
+              <View style={styles.groupHeaderRow}>
+                <Ionicons name={GROUP_ICON[group]} size={16} color={isFinancial ? 'rgba(255,255,255,0.85)' : C.brand} />
+                <Text style={[styles.groupHeaderText, isFinancial && { color: 'rgba(255,255,255,0.85)' }]}>{group}</Text>
               </View>
-              <Text style={[styles.heroStatValue, meta.accent && { color: '#FFF' }]}>{meta.getValue(data)}</Text>
-              <Text style={[styles.heroStatLabel, meta.accent && { color: 'rgba(255,255,255,0.8)' }]}>{meta.title}</Text>
-              {trend && trend.points.length >= 2 && (
-                <Sparkline points={trend.points} color={meta.accent ? '#9FE1CB' : C.brand} width={cardW - 40} />
-              )}
+
+              <View style={styles.groupStatsGrid}>
+                {statKeys.map((k) => {
+                  const meta = STATS_META[k];
+                  const trend = trendFor(k);
+                  return (
+                    <View key={k} style={styles.groupStatItem}>
+                      <Text style={[styles.groupStatValue, isFinancial && { color: '#FFF' }]}>{meta.getValue(data)}</Text>
+                      <Text style={[styles.groupStatLabel, isFinancial && { color: 'rgba(255,255,255,0.75)' }]}>{meta.title}</Text>
+                      {trend != null && (
+                        <Text style={[styles.groupStatTrend, { color: isFinancial ? '#9FE1CB' : trend >= 0 ? C.success : C.error }]}>
+                          {trend >= 0 ? '↑' : '↓'} {Math.abs(trend)}٪
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View style={[styles.insightBox, isFinancial && { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
+                <Text style={[styles.insightText, isFinancial && { color: '#FFF' }]} numberOfLines={2}>
+                  {insightFor(group)}
+                </Text>
+              </View>
             </View>
           );
         })}
       </ScrollView>
-      {validKeys.length > 1 && (
+      {pages.length > 1 && (
         <View style={styles.dotsRow}>
-          {validKeys.map((k, i) => (
-            <View key={k} style={[styles.dot, i === activeIdx && styles.dotActive]} />
+          {pages.map((p, i) => (
+            <View key={p.group} style={[styles.dot, i === activeIdx && styles.dotActive]} />
           ))}
         </View>
       )}
-    </View>
-  );
-}
-
-/** خط اتجاه بسيط جدًا (Sparkline) مرسوم بـ Views بدل مكتبة SVG خارجية — كافي
- * لصف واحد من نقاط بدون تعقيد إضافي. */
-function Sparkline({ points, color, width }: { points: number[]; color: string; width: number }) {
-  const max = Math.max(...points, 1);
-  const min = Math.min(...points, 0);
-  const range = max - min || 1;
-  const barW = width / points.length;
-  return (
-    <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-end', height: 32, width, marginTop: 10, gap: 3 }}>
-      {points.map((p, i) => {
-        const h = Math.max(3, ((p - min) / range) * 32);
-        return <View key={i} style={{ width: barW - 3, height: h, borderRadius: 2, backgroundColor: color, opacity: 0.5 + (i / points.length) * 0.5 }} />;
-      })}
     </View>
   );
 }
@@ -457,7 +461,7 @@ export default function Dashboard() {
           </View>
           <TouchableOpacity
             style={styles.headerBtn}
-            onPress={() => setCustomizeOpen(true)}
+            onPress={() => router.push('/home-customize')}
             testID="customize-dashboard-btn"
           >
             <Ionicons name="options-outline" size={20} color={C.onSurface2} />
@@ -494,51 +498,6 @@ export default function Dashboard() {
           if (key === 'stats') {
             if (!statsSelected.length) return null;
             return <StatsCarousel keys={statsSelected} data={data} series={series} key={key} />;
-          }
-
-          if (key === 'incomeChart' && series && series.months.length > 0) {
-            return (
-              <View key={key} style={styles.chartCard}>
-                <View style={styles.chartHeader}>
-                  <View>
-                    <Text style={styles.chartTitle}>الدخل والمصاريف</Text>
-                    <Text style={styles.chartSubtitle}>آخر 6 أشهر</Text>
-                  </View>
-                  <View style={styles.legendRow}>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.legendDot, { backgroundColor: C.brand }]} />
-                      <Text style={styles.legendText}>دخل</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.legendDot, { backgroundColor: '#E5A4A4' }]} />
-                      <Text style={styles.legendText}>مصاريف</Text>
-                    </View>
-                  </View>
-                </View>
-                <View style={{ alignItems: 'center', marginTop: 6 }}>
-                  <BarChart
-                    data={barChartData}
-                    width={chartWidth}
-                    height={160}
-                    barWidth={12}
-                    barBorderRadius={4}
-                    noOfSections={4}
-                    maxValue={maxY}
-                    yAxisTextStyle={{ color: C.muted, fontSize: 10, fontFamily: F.regular }}
-                    xAxisLabelTextStyle={{ color: C.onSurface2, fontSize: 10, fontFamily: F.semibold }}
-                    yAxisThickness={0}
-                    xAxisThickness={0}
-                    rulesColor={C.border}
-                    rulesType="solid"
-                    initialSpacing={10}
-                    endSpacing={10}
-                    disableScroll
-                    hideRules={false}
-                    yAxisLabelWidth={40}
-                  />
-                </View>
-              </View>
-            );
           }
 
           if (key === 'contentChart' && contentTotal > 0) {
@@ -650,62 +609,7 @@ export default function Dashboard() {
         })}
       </ScrollView>
 
-      {/* Customize dashboard modal */}
-      <AppModal visible={customizeOpen} title="تخصيص الرئيسية" onClose={() => setCustomizeOpen(false)}>
-        <Text style={styles.customHint}>
-          رتّب الأقسام بالأسهم واختر ما تريد إظهاره. تُحفظ التفضيلات على حسابك.
-        </Text>
-        {widgetsOrder.map((k, idx) => {
-          const meta = WIDGET_META[k];
-          const isFirst = idx === 0;
-          const isLast = idx === widgetsOrder.length - 1;
-          return (
-            <View key={k} style={styles.widgetRow}>
-              <View style={styles.orderBtns}>
-                <TouchableOpacity
-                  onPress={() => moveWidget(k, -1)}
-                  disabled={isFirst}
-                  style={[styles.orderBtn, isFirst && styles.orderBtnDisabled]}
-                  testID={`move-up-${k}`}
-                  hitSlop={4}
-                >
-                  <Ionicons name="chevron-up" size={16} color={isFirst ? C.muted : C.brand} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => moveWidget(k, 1)}
-                  disabled={isLast}
-                  style={[styles.orderBtn, isLast && styles.orderBtnDisabled]}
-                  testID={`move-down-${k}`}
-                  hitSlop={4}
-                >
-                  <Ionicons name="chevron-down" size={16} color={isLast ? C.muted : C.brand} />
-                </TouchableOpacity>
-              </View>
-              <Switch
-                value={widgetsVisible[k]}
-                onValueChange={(v) => toggleVisible(k, v)}
-                trackColor={{ true: C.brand, false: C.border }}
-                thumbColor="#FFF"
-                testID={`toggle-${k}`}
-              />
-              <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={styles.widgetLabel}>{meta.label}</Text>
-                <Text style={styles.widgetOrderText}>الترتيب: {idx + 1}</Text>
-              </View>
-              <View style={styles.widgetIcon}>
-                <Ionicons name={meta.icon} size={18} color={C.brand} />
-              </View>
-            </View>
-          );
-        })}
-        <TouchableOpacity
-          style={styles.resetBtn}
-          onPress={resetPrefs}
-          testID="reset-widgets-btn"
-        >
-          <Text style={styles.resetText}>استعادة الإعدادات الافتراضية</Text>
-        </TouchableOpacity>
-      </AppModal>
+      {/* تخصيص الرئيسية صار بشاشة موحّدة (/home-customize) — مو مودال منفصل هنا (طلب: التخصيص بمكان وحد) */}
     </View>
   );
 }
@@ -757,8 +661,15 @@ const styles = StyleSheet.create({
   dotsRow: { flexDirection: 'row-reverse', justifyContent: 'center', gap: 6, marginTop: 10 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.surface3 },
   dotActive: { backgroundColor: C.brand, width: 16 },
-  trendBadge: { flexDirection: 'row-reverse', alignItems: 'center', gap: 3 },
-  trendBadgeText: { fontFamily: F.semibold, fontSize: 10.5 },
+  groupHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginBottom: 14 },
+  groupHeaderText: { fontFamily: F.bold, fontSize: 15, color: C.onSurface },
+  groupStatsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 14, width: '100%' },
+  groupStatItem: { minWidth: '42%', alignItems: 'flex-end' },
+  groupStatValue: { fontFamily: F.bold, fontSize: 22, color: C.onSurface },
+  groupStatLabel: { fontFamily: F.regular, fontSize: 11.5, color: C.muted, marginTop: 2 },
+  groupStatTrend: { fontFamily: F.semibold, fontSize: 11, marginTop: 3 },
+  insightBox: { backgroundColor: C.brandSoft, borderRadius: R.md, padding: 10, marginTop: 16, width: '100%' },
+  insightText: { fontFamily: F.regular, fontSize: 12, color: C.brandDark, textAlign: 'right', lineHeight: 18 },
   statValue: { fontFamily: F.bold, fontSize: 18, color: C.onSurface },
   statLabel: { fontFamily: F.regular, fontSize: 12, color: C.muted },
   sectionTitle: {

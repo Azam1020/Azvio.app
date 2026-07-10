@@ -45,6 +45,16 @@ const STATS_POOL: { key: string; title: string; icon: any; group: string }[] = [
 ];
 const STATS_GROUPS = ['المالية', 'العملاء', 'المهام', 'التقويم', 'سند'];
 
+// الأقسام الكبرى بالرئيسية (إحصائيات، توزيع المحتوى، أزرار الأقسام، المواعيد) —
+// دمجناها هنا بنفس شاشة التخصيص عشان التحكم يكون بمكان وحد (طلب: التخصيص
+// ليش بمكانين، خلها مع بعض).
+const MAJOR_WIDGETS = [
+  { key: 'stats', title: 'الإحصائيات', icon: 'stats-chart' as const },
+  { key: 'contentChart', title: 'توزيع المحتوى', icon: 'pie-chart' as const },
+  { key: 'nav', title: 'أزرار الأقسام', icon: 'apps' as const },
+  { key: 'events', title: 'المواعيد القادمة', icon: 'calendar' as const },
+];
+
 type Card = { key: string; title: string; icon: any; isCustom: boolean; customId?: string };
 
 export default function HomeCustomizeScreen() {
@@ -57,6 +67,8 @@ export default function HomeCustomizeScreen() {
   const [addCustomModal, setAddCustomModal] = useState(false);
   const [newCustom, setNewCustom] = useState({ title: '', target: '' });
   const [statsSelected, setStatsSelected] = useState<string[]>(['month_income', 'month_expenses', 'clients_in_progress', 'clients_delivered']);
+  const [majorOrder, setMajorOrder] = useState<string[]>(MAJOR_WIDGETS.map((w) => w.key));
+  const [majorVisible, setMajorVisible] = useState<Record<string, boolean>>(Object.fromEntries(MAJOR_WIDGETS.map((w) => [w.key, true])));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +83,12 @@ export default function HomeCustomizeScreen() {
       setHidden(r?.hidden ?? []);
       setSizes(r?.sizes ?? {});
       setStatsSelected(r?.stats_selected?.length ? r.stats_selected : ['month_income', 'month_expenses', 'clients_in_progress', 'clients_delivered']);
+    } catch {}
+    try {
+      const s = await api('/user/settings');
+      const dash = s?.dashboard;
+      if (dash?.order?.length) setMajorOrder(dash.order);
+      if (dash?.visible) setMajorVisible(dash.visible);
     } catch {}
     setLoading(false);
   }, []);
@@ -106,6 +124,21 @@ export default function HomeCustomizeScreen() {
     setStatsSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   };
 
+  const moveMajor = (key: string, dir: -1 | 1) => {
+    setMajorOrder((prev) => {
+      const idx = prev.indexOf(key);
+      const newIdx = idx + dir;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      return next;
+    });
+  };
+
+  const toggleMajorVisible = (key: string) => {
+    setMajorVisible((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const addCustomCard = () => {
     if (!newCustom.title.trim() || !newCustom.target.trim()) return;
     const id = Math.random().toString(36).slice(2);
@@ -125,6 +158,7 @@ export default function HomeCustomizeScreen() {
     setSaving(true);
     try {
       await api('/home/layout', { method: 'PUT', body: JSON.stringify({ order, hidden, sizes, custom, stats_selected: statsSelected }) });
+      await api('/user/settings/dashboard', { method: 'PUT', body: JSON.stringify({ order: majorOrder, visible: majorVisible }) });
       Alert.alert('تم الحفظ', '✅ الرئيسية صارت مرتبة على ذوقك');
     } catch (e: any) {
       Alert.alert('خطأ', e?.message || 'تعذّر الحفظ');
@@ -158,6 +192,35 @@ export default function HomeCustomizeScreen() {
       <ScreenHeader title="تخصيص الرئيسية" subtitle="رتّب بالأسهم، أخفِ، وغيّر الحجم" canBack />
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+        <Text style={styles.sectionHeading}>أقسام الرئيسية الكبرى</Text>
+        {majorOrder.map((key, idx) => {
+          const w = MAJOR_WIDGETS.find((x) => x.key === key);
+          if (!w) return null;
+          const isVisible = majorVisible[key] !== false;
+          return (
+            <View key={key} style={[styles.row, !isVisible && styles.rowHidden]}>
+              <View pointerEvents="none" style={[styles.bracket, styles.bracketTL]} />
+              <View pointerEvents="none" style={[styles.bracket, styles.bracketBR]} />
+              <View style={styles.arrows}>
+                <TouchableOpacity onPress={() => moveMajor(key, -1)} disabled={idx === 0} hitSlop={8}>
+                  <Ionicons name="chevron-up" size={18} color={idx === 0 ? C.border : C.brand} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => moveMajor(key, 1)} disabled={idx === majorOrder.length - 1} hitSlop={8}>
+                  <Ionicons name="chevron-down" size={18} color={idx === majorOrder.length - 1 ? C.border : C.brand} />
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.iconBadge, !isVisible && styles.iconBadgeMuted]}>
+                <Ionicons name={w.icon} size={19} color={!isVisible ? C.muted : C.brandDark} />
+              </View>
+              <Text style={[styles.rowTitle, !isVisible && styles.rowTitleHidden]}>{w.title}</Text>
+              <TouchableOpacity onPress={() => toggleMajorVisible(key)} hitSlop={8}>
+                <Ionicons name={isVisible ? 'eye-outline' : 'eye-off-outline'} size={19} color={isVisible ? C.brand : C.muted} />
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+
+        <Text style={[styles.sectionHeading, { marginTop: 16 }]}>بطاقات الأقسام</Text>
         <View style={styles.hintRow}>
           <View style={styles.hintBracketL} />
           <Text style={styles.hint}>رتّب بالأسهم، اضغط العين للإخفاء، والحجم لتكبير/تصغير البطاقة</Text>
@@ -174,10 +237,10 @@ export default function HomeCustomizeScreen() {
 
               <View style={styles.arrows}>
                 <TouchableOpacity onPress={() => move(c.key, -1)} disabled={idx === 0} hitSlop={8}>
-                  <Ionicons name="chevron-up" size={18} color={idx === 0 ? C.divider : C.brand} />
+                  <Ionicons name="chevron-up" size={18} color={idx === 0 ? C.border : C.brand} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => move(c.key, 1)} disabled={idx === orderedCards.length - 1} hitSlop={8}>
-                  <Ionicons name="chevron-down" size={18} color={idx === orderedCards.length - 1 ? C.divider : C.brand} />
+                  <Ionicons name="chevron-down" size={18} color={idx === orderedCards.length - 1 ? C.border : C.brand} />
                 </TouchableOpacity>
               </View>
 
@@ -277,6 +340,7 @@ export default function HomeCustomizeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.surface2 },
+  sectionHeading: { fontFamily: F.bold, fontSize: 14, color: C.onSurface, textAlign: 'right', marginBottom: 10 },
   hintRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 12 },
   hintBracketL: { width: 10, height: 10, borderTopWidth: 1.5, borderRightWidth: 1.5, borderColor: C.brand, transform: [{ rotate: '90deg' }] },
   hintBracketR: { width: 10, height: 10, borderTopWidth: 1.5, borderRightWidth: 1.5, borderColor: C.brand, transform: [{ rotate: '-90deg' }] },
