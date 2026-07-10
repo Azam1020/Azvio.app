@@ -1035,7 +1035,7 @@ async def delete_event(event_id: str):
 
 @router.get("/dashboard")
 async def dashboard():
-    clients = await db.clients.find({}, {"_id": 0, "status": 1, "service_type": 1}).to_list(5000)
+    clients = await db.clients.find({}, {"_id": 0, "status": 1, "service_type": 1, "contact_id": 1}).to_list(5000)
     txs = await db.transactions.find({}, {"_id": 0, "type": 1, "amount": 1, "date": 1}).to_list(10000)
     month = datetime.now(timezone.utc).strftime("%Y-%m")
     month_income = sum(t["amount"] for t in txs if t["type"] == "income" and (t.get("date") or "").startswith(month))
@@ -1057,6 +1057,19 @@ async def dashboard():
     tasks_total = await db.tasks.count_documents({})
     tasks_done = await db.tasks.count_documents({"status": "done"})
     tasks_overdue = await db.tasks.count_documents({"due_date": {"$lt": today_str()}, "status": {"$ne": "done"}})
+    tasks_pending = await db.tasks.count_documents({"status": {"$ne": "done"}})
+
+    # عملاء متكررون (نفس contact_id تكرر مرتين فأكثر) — طلب: إحصائيات على العملاء
+    contact_counts: dict = {}
+    for c in clients:
+        cid = c.get("contact_id")
+        if cid:
+            contact_counts[cid] = contact_counts.get(cid, 0) + 1
+    repeat_clients = sum(1 for n in contact_counts.values() if n >= 2)
+
+    events_today_count = await db.events.count_documents({"date": today_str()})
+    # تحاليل واتساب لسا ما اتطبقت = تنبيهات سند تحتاج مراجعتك
+    sanad_alerts_count = await db.whatsapp_analyses.count_documents({"applied": False})
 
     return {
         "clients_total": len(clients),
@@ -1073,6 +1086,10 @@ async def dashboard():
         "tasks_total": tasks_total,
         "tasks_done": tasks_done,
         "tasks_overdue": tasks_overdue,
+        "tasks_pending": tasks_pending,
+        "repeat_clients": repeat_clients,
+        "events_today_count": events_today_count,
+        "sanad_alerts_count": sanad_alerts_count,
         "tasks_completion_rate": round((tasks_done / tasks_total * 100), 1) if tasks_total else 0,
     }
 

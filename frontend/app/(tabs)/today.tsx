@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Platform,
   RefreshControl,
@@ -53,6 +54,7 @@ export default function TodayScreen() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', due_date: '', priority: 'normal' as Task['priority'] });
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [suggestingTask, setSuggestingTask] = useState(false);
 
   const [stats, setStats] = useState({ completed: 0, pending: 0, completion_rate: 0 });
   const [sanadPlan, setSanadPlan] = useState('');
@@ -131,6 +133,17 @@ export default function TodayScreen() {
     setEditingTask(null);
     setForm({ title: '', description: '', due_date: '', priority: 'normal' });
     setModal(true);
+  };
+
+  const suggestFromSanad = async () => {
+    setSuggestingTask(true);
+    try {
+      const r = await api('/sanad/suggest-task', { method: 'POST', body: JSON.stringify({ hint: form.title }) });
+      setForm((f) => ({ ...f, title: r?.title || f.title, description: r?.description || f.description, priority: r?.priority || f.priority }));
+    } catch (e: any) {
+      Alert.alert('تعذّر', e?.message || 'سند ما قدر يقترح الحين');
+    }
+    setSuggestingTask(false);
   };
 
   const save = async () => {
@@ -348,6 +361,16 @@ export default function TodayScreen() {
         onSave={save}
         saving={saving}
       >
+        <TouchableOpacity style={styles.sanadSuggestBtn} onPress={suggestFromSanad} disabled={suggestingTask}>
+          {suggestingTask ? (
+            <ActivityIndicator size="small" color={C.brand} />
+          ) : (
+            <>
+              <Ionicons name="sparkles" size={15} color={C.brand} />
+              <Text style={styles.sanadSuggestText}>اقتراح من سند</Text>
+            </>
+          )}
+        </TouchableOpacity>
         <Field label="عنوان المهمة" value={form.title} onChangeText={(v) => setForm({ ...form, title: v })} placeholder="مثال: مونتاج فيديو فلة الرياض" />
         <Field
           label="تفاصيل (اختياري)"
@@ -404,6 +427,17 @@ const styles = StyleSheet.create({
   },
   metaText: { fontFamily: F.semibold, fontSize: 11, color: C.muted },
   chipsLabel: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, textAlign: 'right', marginBottom: 6 },
+  sanadSuggestBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: C.brandSoft,
+    borderRadius: R.md,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  sanadSuggestText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
   
   // الإحصائيات والتحفيز
   statsCard: {

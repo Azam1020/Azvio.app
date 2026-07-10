@@ -98,17 +98,22 @@ const STATS_META: Record<string, { title: string; icon: any; getValue: (d: any) 
   clients_delivered: { title: 'مشاريع مُسلّمة', icon: 'checkmark-circle', getValue: (d) => String(d?.clients_delivered ?? 0), color: C.success },
   clients_total: { title: 'إجمالي العملاء', icon: 'people', getValue: (d) => String(d?.clients_total ?? 0), color: C.brand },
   delivery_rate: { title: 'معدل التسليم', icon: 'speedometer', getValue: (d) => `${d?.delivery_rate ?? 0}٪`, color: C.brand },
+  repeat_clients: { title: 'عملاء متكررون', icon: 'repeat', getValue: (d) => String(d?.repeat_clients ?? 0), color: C.brand },
   tasks_overdue: { title: 'مهام متأخرة', icon: 'alert-circle', getValue: (d) => String(d?.tasks_overdue ?? 0), color: C.error },
   tasks_completion_rate: { title: 'معدل إنجاز المهام', icon: 'checkbox', getValue: (d) => `${d?.tasks_completion_rate ?? 0}٪`, color: C.brand },
+  tasks_pending: { title: 'مهام متبقية', icon: 'list', getValue: (d) => String(d?.tasks_pending ?? 0), color: C.warning },
   upcoming_events_count: { title: 'المواعيد القادمة', icon: 'calendar', getValue: (d) => String(d?.upcoming_events_count ?? 0), color: C.brand },
+  events_today_count: { title: 'مواعيد اليوم', icon: 'today', getValue: (d) => String(d?.events_today_count ?? 0), color: C.brand },
+  sanad_alerts_count: { title: 'تنبيهات سند', icon: 'sparkles', getValue: (d) => String(d?.sanad_alerts_count ?? 0), color: C.brand },
 };
 
 const PREFS_CACHE_KEY = 'azvio_dashboard_prefs_v2';
 
 /** بطاقة إحصائية كبيرة واحدة تُلَف يمين/يسار بين كل الإحصائيات المختارة —
  * بدل شبكة ثابتة، عشان تكون تجربة "قيادة" (command center) بدل أرقام متناثرة
- * (طلب: بطاقة المبلغ الكبيرة تكون قابلة للّف بين الإحصائيات). */
-function StatsCarousel({ keys, data }: { keys: string[]; data: any }) {
+ * (طلب: بطاقة المبلغ الكبيرة تكون قابلة للّف بين الإحصائيات). البطاقات المالية
+ * (دخل/مصاريف/ربح) تعرض كمان نسبة التغيّر عن الشهر اللي فات وخط اتجاه بسيط. */
+function StatsCarousel({ keys, data, series }: { keys: string[]; data: any; series: Series | null }) {
   const { width: screenW } = useWindowDimensions();
   const cardW = screenW - 32; // نفس هوامش الصفحة (padding: 16 من كل جهة)
   const [activeIdx, setActiveIdx] = useState(0);
@@ -120,6 +125,23 @@ function StatsCarousel({ keys, data }: { keys: string[]; data: any }) {
   const onScrollEnd = (e: any) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / cardW);
     setActiveIdx(Math.max(0, Math.min(validKeys.length - 1, idx)));
+  };
+
+  // للبطاقات المالية (دخل/مصاريف/ربح) نحسب نسبة التغيّر عن الشهر السابق ونبني
+  // نقاط خط اتجاه بسيط من آخر 6 أشهر — يحتاج بيانات السلسلة الزمنية.
+  const financialSeries: Record<string, number[] | undefined> = {
+    month_income: series?.income,
+    month_expenses: series?.expense,
+    net_profit: series?.income?.map((v, i) => v - (series?.expense?.[i] || 0)),
+  };
+
+  const getTrend = (statKey: string) => {
+    const arr = financialSeries[statKey];
+    if (!arr || arr.length < 2) return null;
+    const last = arr[arr.length - 1];
+    const prev = arr[arr.length - 2];
+    const pct = prev !== 0 ? Math.round(((last - prev) / Math.abs(prev)) * 100) : null;
+    return { points: arr.slice(-6), pct };
   };
 
   return (
@@ -134,13 +156,27 @@ function StatsCarousel({ keys, data }: { keys: string[]; data: any }) {
       >
         {validKeys.map((statKey) => {
           const meta = STATS_META[statKey];
+          const trend = getTrend(statKey);
           return (
             <View key={statKey} style={[styles.heroStatCard, { width: cardW, backgroundColor: meta.accent ? C.brand : C.surface }]}>
               <View pointerEvents="none" style={[styles.statBracket, styles.statBracketTL, meta.accent && { borderColor: 'rgba(255,255,255,0.5)' }]} />
               <View pointerEvents="none" style={[styles.statBracket, styles.statBracketBR, meta.accent && { borderColor: 'rgba(255,255,255,0.5)' }]} />
-              <Ionicons name={meta.icon} size={22} color={meta.accent ? 'rgba(255,255,255,0.85)' : meta.color || C.onSurface} />
+              <View style={{ width: '100%', flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Ionicons name={meta.icon} size={22} color={meta.accent ? 'rgba(255,255,255,0.85)' : meta.color || C.onSurface} />
+                {trend?.pct != null && (
+                  <View style={styles.trendBadge}>
+                    <Ionicons name={trend.pct >= 0 ? 'arrow-up' : 'arrow-down'} size={11} color={meta.accent ? '#9FE1CB' : trend.pct >= 0 ? C.success : C.error} />
+                    <Text style={[styles.trendBadgeText, { color: meta.accent ? '#9FE1CB' : trend.pct >= 0 ? C.success : C.error }]}>
+                      {Math.abs(trend.pct)}٪ عن الشهر اللي فات
+                    </Text>
+                  </View>
+                )}
+              </View>
               <Text style={[styles.heroStatValue, meta.accent && { color: '#FFF' }]}>{meta.getValue(data)}</Text>
               <Text style={[styles.heroStatLabel, meta.accent && { color: 'rgba(255,255,255,0.8)' }]}>{meta.title}</Text>
+              {trend && trend.points.length >= 2 && (
+                <Sparkline points={trend.points} color={meta.accent ? '#9FE1CB' : C.brand} width={cardW - 40} />
+              )}
             </View>
           );
         })}
@@ -152,6 +188,23 @@ function StatsCarousel({ keys, data }: { keys: string[]; data: any }) {
           ))}
         </View>
       )}
+    </View>
+  );
+}
+
+/** خط اتجاه بسيط جدًا (Sparkline) مرسوم بـ Views بدل مكتبة SVG خارجية — كافي
+ * لصف واحد من نقاط بدون تعقيد إضافي. */
+function Sparkline({ points, color, width }: { points: number[]; color: string; width: number }) {
+  const max = Math.max(...points, 1);
+  const min = Math.min(...points, 0);
+  const range = max - min || 1;
+  const barW = width / points.length;
+  return (
+    <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-end', height: 32, width, marginTop: 10, gap: 3 }}>
+      {points.map((p, i) => {
+        const h = Math.max(3, ((p - min) / range) * 32);
+        return <View key={i} style={{ width: barW - 3, height: h, borderRadius: 2, backgroundColor: color, opacity: 0.5 + (i / points.length) * 0.5 }} />;
+      })}
     </View>
   );
 }
@@ -440,7 +493,7 @@ export default function Dashboard() {
         {widgetsOrder.filter((k) => widgetsVisible[k]).map((key) => {
           if (key === 'stats') {
             if (!statsSelected.length) return null;
-            return <StatsCarousel keys={statsSelected} data={data} key={key} />;
+            return <StatsCarousel keys={statsSelected} data={data} series={series} key={key} />;
           }
 
           if (key === 'incomeChart' && series && series.months.length > 0) {
@@ -704,6 +757,8 @@ const styles = StyleSheet.create({
   dotsRow: { flexDirection: 'row-reverse', justifyContent: 'center', gap: 6, marginTop: 10 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.surface3 },
   dotActive: { backgroundColor: C.brand, width: 16 },
+  trendBadge: { flexDirection: 'row-reverse', alignItems: 'center', gap: 3 },
+  trendBadgeText: { fontFamily: F.semibold, fontSize: 10.5 },
   statValue: { fontFamily: F.bold, fontSize: 18, color: C.onSurface },
   statLabel: { fontFamily: F.regular, fontSize: 12, color: C.muted },
   sectionTitle: {

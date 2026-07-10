@@ -1,20 +1,10 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Easing,
-  PanResponder,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
 import { AppModal, Field, ScreenHeader } from '@/src/ui';
-import { C, F, R } from '@/src/theme';
+import { C, F, R, shadow } from '@/src/theme';
 
 const ALL_CARDS = [
   { key: 'content', title: 'المحتوى', icon: 'film' as const },
@@ -34,22 +24,26 @@ const ALL_CARDS = [
 
 const SIZE_LABEL: Record<string, string> = { small: 'مصغّرة', medium: 'قياسية', large: 'موسّعة' };
 const SIZE_CYCLE = ['medium', 'small', 'large'];
-const ROW_H = 76; // ارتفاع ثابت لكل صف — يبسّط حساب مكان الإفلات أثناء السحب
 
-// مجمع الإحصائيات المتاحة للرئيسية — اختيار مدقق بدل ٤ بطاقات ثابتة (طلب: اختيار
-// مدقق بالإحصائيات والتحاليل). كل عنصر يشير لحقل من استجابة /dashboard.
-const STATS_POOL: { key: string; title: string; icon: any; color?: string }[] = [
-  { key: 'month_income', title: 'دخل هذا الشهر', icon: 'trending-up' },
-  { key: 'month_expenses', title: 'مصاريف الشهر', icon: 'trending-down' },
-  { key: 'net_profit', title: 'صافي الربح', icon: 'wallet' },
-  { key: 'clients_in_progress', title: 'مشاريع قيد التنفيذ', icon: 'hourglass' },
-  { key: 'clients_delivered', title: 'مشاريع مُسلّمة', icon: 'checkmark-circle' },
-  { key: 'clients_total', title: 'إجمالي العملاء', icon: 'people' },
-  { key: 'delivery_rate', title: 'معدل التسليم', icon: 'speedometer' },
-  { key: 'tasks_overdue', title: 'مهام متأخرة', icon: 'alert-circle' },
-  { key: 'tasks_completion_rate', title: 'معدل إنجاز المهام', icon: 'checkbox' },
-  { key: 'upcoming_events_count', title: 'المواعيد القادمة', icon: 'calendar' },
+// مجمع الإحصائيات المتاحة للرئيسية — اختيار مدقق، يغطي المالية والعملاء والمهام
+// والتقويم وسند (طلب: الإحصائيات تكون غير المالية على العملاء والمهام والتقويم وسند).
+const STATS_POOL: { key: string; title: string; icon: any; group: string }[] = [
+  { key: 'month_income', title: 'دخل هذا الشهر', icon: 'trending-up', group: 'المالية' },
+  { key: 'month_expenses', title: 'مصاريف الشهر', icon: 'trending-down', group: 'المالية' },
+  { key: 'net_profit', title: 'صافي الربح', icon: 'wallet', group: 'المالية' },
+  { key: 'clients_in_progress', title: 'مشاريع قيد التنفيذ', icon: 'hourglass', group: 'العملاء' },
+  { key: 'clients_delivered', title: 'مشاريع مُسلّمة', icon: 'checkmark-circle', group: 'العملاء' },
+  { key: 'clients_total', title: 'إجمالي العملاء', icon: 'people', group: 'العملاء' },
+  { key: 'delivery_rate', title: 'معدل التسليم', icon: 'speedometer', group: 'العملاء' },
+  { key: 'repeat_clients', title: 'عملاء متكررون', icon: 'repeat', group: 'العملاء' },
+  { key: 'tasks_overdue', title: 'مهام متأخرة', icon: 'alert-circle', group: 'المهام' },
+  { key: 'tasks_completion_rate', title: 'معدل إنجاز المهام', icon: 'checkbox', group: 'المهام' },
+  { key: 'tasks_pending', title: 'مهام متبقية اليوم', icon: 'list', group: 'المهام' },
+  { key: 'upcoming_events_count', title: 'المواعيد القادمة', icon: 'calendar', group: 'التقويم' },
+  { key: 'events_today_count', title: 'مواعيد اليوم', icon: 'today', group: 'التقويم' },
+  { key: 'sanad_alerts_count', title: 'تنبيهات سند', icon: 'sparkles', group: 'سند' },
 ];
+const STATS_GROUPS = ['المالية', 'العملاء', 'المهام', 'التقويم', 'سند'];
 
 type Card = { key: string; title: string; icon: any; isCustom: boolean; customId?: string };
 
@@ -62,7 +56,6 @@ export default function HomeCustomizeScreen() {
   const [custom, setCustom] = useState<{ id: string; title: string; icon: string; target: string }[]>([]);
   const [addCustomModal, setAddCustomModal] = useState(false);
   const [newCustom, setNewCustom] = useState({ title: '', target: '' });
-  const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const [statsSelected, setStatsSelected] = useState<string[]>(['month_income', 'month_expenses', 'clients_in_progress', 'clients_delivered']);
 
   const load = useCallback(async () => {
@@ -88,6 +81,17 @@ export default function HomeCustomizeScreen() {
     }, [load])
   );
 
+  const move = (key: string, dir: -1 | 1) => {
+    setOrder((prev) => {
+      const idx = prev.indexOf(key);
+      const newIdx = idx + dir;
+      if (newIdx < 0 || newIdx >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+      return next;
+    });
+  };
+
   const toggleHidden = (key: string) => {
     setHidden((h) => (h.includes(key) ? h.filter((k) => k !== key) : [...h, key]));
   };
@@ -96,6 +100,10 @@ export default function HomeCustomizeScreen() {
     const current = sizes[key] || 'medium';
     const next = SIZE_CYCLE[(SIZE_CYCLE.indexOf(current) + 1) % SIZE_CYCLE.length];
     setSizes((s) => ({ ...s, [key]: next }));
+  };
+
+  const toggleStat = (key: string) => {
+    setStatsSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   };
 
   const addCustomCard = () => {
@@ -111,10 +119,6 @@ export default function HomeCustomizeScreen() {
     setCustom((c) => c.filter((cc) => cc.id !== id));
     setOrder((o) => o.filter((k) => k !== `custom:${id}`));
     setHidden((h) => h.filter((k) => k !== `custom:${id}`));
-  };
-
-  const toggleStat = (key: string) => {
-    setStatsSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   };
 
   const save = async () => {
@@ -133,11 +137,13 @@ export default function HomeCustomizeScreen() {
     setHidden([]);
     setSizes({});
     setCustom([]);
+    setStatsSelected(['month_income', 'month_expenses', 'clients_in_progress', 'clients_delivered']);
   };
 
   const customAsCards: Card[] = custom.map((c) => ({ key: `custom:${c.id}`, title: c.title, icon: 'link', isCustom: true, customId: c.id }));
   const allCards: Card[] = [...ALL_CARDS.map((c) => ({ ...c, isCustom: false })), ...customAsCards];
   const cardByKey = useMemo(() => Object.fromEntries(allCards.map((c) => [c.key, c])), [allCards, custom]);
+  const orderedCards = order.map((k) => cardByKey[k]).filter(Boolean) as Card[];
 
   if (loading) {
     return (
@@ -149,36 +155,61 @@ export default function HomeCustomizeScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title="تخصيص الرئيسية" subtitle="اضغط مطوّلاً واسحب لإعادة الترتيب" canBack />
+      <ScreenHeader title="تخصيص الرئيسية" subtitle="رتّب بالأسهم، أخفِ، وغيّر الحجم" canBack />
 
-      <View style={{ flex: 1, paddingHorizontal: 16 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         <View style={styles.hintRow}>
           <View style={styles.hintBracketL} />
-          <Text style={styles.hint}>اضغط مطوّلاً على أي بطاقة واسحبها لأي مكان يناسبك</Text>
+          <Text style={styles.hint}>رتّب بالأسهم، اضغط العين للإخفاء، والحجم لتكبير/تصغير البطاقة</Text>
           <View style={styles.hintBracketR} />
         </View>
 
-        <View style={{ height: order.length * ROW_H + 24, marginTop: 6 }}>
-          {order.map((key) => {
-            const card = cardByKey[key];
-            if (!card) return null;
-            return (
-              <DraggableRow
-                key={key}
-                card={card}
-                order={order}
-                setOrder={setOrder}
-                isHidden={hidden.includes(key)}
-                size={sizes[key] || 'medium'}
-                onToggleHidden={() => toggleHidden(key)}
-                onCycleSize={() => cycleSize(key)}
-                onRemoveCustom={card.isCustom ? () => removeCustomCard(card.customId!) : undefined}
-                isDragging={draggingKey === key}
-                setDraggingKey={setDraggingKey}
-              />
-            );
-          })}
-        </View>
+        {orderedCards.map((c, idx) => {
+          const isHidden = hidden.includes(c.key);
+          const size = sizes[c.key] || 'medium';
+          return (
+            <View key={c.key} style={[styles.row, isHidden && styles.rowHidden]}>
+              <View pointerEvents="none" style={[styles.bracket, styles.bracketTL]} />
+              <View pointerEvents="none" style={[styles.bracket, styles.bracketBR]} />
+
+              <View style={styles.arrows}>
+                <TouchableOpacity onPress={() => move(c.key, -1)} disabled={idx === 0} hitSlop={8}>
+                  <Ionicons name="chevron-up" size={18} color={idx === 0 ? C.divider : C.brand} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => move(c.key, 1)} disabled={idx === orderedCards.length - 1} hitSlop={8}>
+                  <Ionicons name="chevron-down" size={18} color={idx === orderedCards.length - 1 ? C.divider : C.brand} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={[styles.iconBadge, isHidden && styles.iconBadgeMuted]}>
+                <Ionicons name={c.icon} size={19} color={isHidden ? C.muted : C.brandDark} />
+              </View>
+
+              <Text style={[styles.rowTitle, isHidden && styles.rowTitleHidden]} numberOfLines={1}>
+                {c.title}
+              </Text>
+
+              <TouchableOpacity onPress={() => cycleSize(c.key)} style={styles.sizeBtn} hitSlop={6}>
+                <Text style={styles.sizeBtnText}>{SIZE_LABEL[size]}</Text>
+              </TouchableOpacity>
+
+              {c.isCustom && (
+                <TouchableOpacity onPress={() => removeCustomCard(c.customId!)} hitSlop={8} style={{ marginHorizontal: 2 }}>
+                  <Ionicons name="trash-outline" size={17} color={C.error} />
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity onPress={() => toggleHidden(c.key)} hitSlop={8}>
+                <Ionicons name={isHidden ? 'eye-off-outline' : 'eye-outline'} size={19} color={isHidden ? C.muted : C.brand} />
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+
+        <TouchableOpacity style={styles.addCustomBtn} onPress={() => setAddCustomModal(true)}>
+          <Ionicons name="add-circle-outline" size={18} color={C.brand} />
+          <Text style={styles.addCustomText}>إضافة بطاقة مخصصة (رابط أو شاشة)</Text>
+        </TouchableOpacity>
 
         <View style={styles.statsSection}>
           <View style={styles.hintRow}>
@@ -186,29 +217,34 @@ export default function HomeCustomizeScreen() {
             <Text style={styles.hint}>اختيار مدقق — حدد بالضبط أي إحصائية تظهر أعلى الرئيسية</Text>
             <View style={styles.hintBracketR} />
           </View>
-          <View style={styles.statsGrid}>
-            {STATS_POOL.map((s) => {
-              const selectedIdx = statsSelected.indexOf(s.key);
-              const isSelected = selectedIdx !== -1;
-              return (
-                <TouchableOpacity key={s.key} style={[styles.statChip, isSelected && styles.statChipSelected]} onPress={() => toggleStat(s.key)}>
-                  {isSelected && (
-                    <View style={styles.statChipBadge}>
-                      <Text style={styles.statChipBadgeText}>{selectedIdx + 1}</Text>
-                    </View>
-                  )}
-                  <Ionicons name={s.icon} size={16} color={isSelected ? C.brand : C.muted} />
-                  <Text style={[styles.statChipText, isSelected && styles.statChipTextSelected]}>{s.title}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
 
-        <TouchableOpacity style={styles.addCustomBtn} onPress={() => setAddCustomModal(true)}>
-          <Ionicons name="add-circle-outline" size={18} color={C.brand} />
-          <Text style={styles.addCustomText}>إضافة بطاقة مخصصة (رابط أو شاشة)</Text>
-        </TouchableOpacity>
+          {STATS_GROUPS.map((group) => {
+            const groupStats = STATS_POOL.filter((s) => s.group === group);
+            if (!groupStats.length) return null;
+            return (
+              <View key={group} style={{ marginBottom: 10 }}>
+                <Text style={styles.groupLabel}>{group}</Text>
+                <View style={styles.statsGrid}>
+                  {groupStats.map((s) => {
+                    const selectedIdx = statsSelected.indexOf(s.key);
+                    const isSelected = selectedIdx !== -1;
+                    return (
+                      <TouchableOpacity key={s.key} style={[styles.statChip, isSelected && styles.statChipSelected]} onPress={() => toggleStat(s.key)}>
+                        {isSelected && (
+                          <View style={styles.statChipBadge}>
+                            <Text style={styles.statChipBadgeText}>{selectedIdx + 1}</Text>
+                          </View>
+                        )}
+                        <Ionicons name={s.icon} size={16} color={isSelected ? C.brand : C.muted} />
+                        <Text style={[styles.statChipText, isSelected && styles.statChipTextSelected]}>{s.title}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          })}
+        </View>
 
         <TouchableOpacity style={styles.resetBtn} onPress={reset}>
           <Text style={styles.resetText}>إرجاع الترتيب الافتراضي</Text>
@@ -217,7 +253,7 @@ export default function HomeCustomizeScreen() {
         <TouchableOpacity style={styles.saveBtn} onPress={save} disabled={saving}>
           {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>حفظ الترتيب</Text>}
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       <AppModal
         visible={addCustomModal}
@@ -239,167 +275,30 @@ export default function HomeCustomizeScreen() {
   );
 }
 
-/** صف قابل للسحب — يستخدم موضع مطلق (top) محسوب من ترتيبه، مع أنيميشن ناعم
- * عند إعادة ترتيب باقي الصفوف بسبب سحب صف آخر. الصف نفسه أثناء سحبه يتبع
- * الإصبع مباشرة بدون أنيميشن (استجابة فورية). */
-function DraggableRow({
-  card,
-  order,
-  setOrder,
-  isHidden,
-  size,
-  onToggleHidden,
-  onCycleSize,
-  onRemoveCustom,
-  isDragging,
-  setDraggingKey,
-}: {
-  card: Card;
-  order: string[];
-  setOrder: (o: string[]) => void;
-  isHidden: boolean;
-  size: string;
-  onToggleHidden: () => void;
-  onCycleSize: () => void;
-  onRemoveCustom?: () => void;
-  isDragging: boolean;
-  setDraggingKey: (k: string | null) => void;
-}) {
-  const index = order.indexOf(card.key);
-  const top = useRef(new Animated.Value(index * ROW_H)).current;
-  const scale = useRef(new Animated.Value(1)).current;
-  const orderRef = useRef(order);
-  orderRef.current = order;
-  const startIndexRef = useRef(index);
-
-  // تحديث الموضع بأنيميشن ناعم كل ما تغيّر ترتيب هذا الصف (بسبب سحب صف ثاني)
-  React.useEffect(() => {
-    if (!isDragging) {
-      Animated.timing(top, {
-        toValue: index * ROW_H,
-        duration: 220,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [index, isDragging]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponderCapture: () => false,
-      onPanResponderTerminationRequest: () => false,
-    })
-  ).current;
-
-  const longPressResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        startIndexRef.current = orderRef.current.indexOf(card.key);
-        setDraggingKey(card.key);
-        Animated.spring(scale, { toValue: 1.04, useNativeDriver: false, friction: 6 }).start();
-      },
-      onPanResponderMove: (_evt, gesture) => {
-        const baseTop = startIndexRef.current * ROW_H;
-        const newTop = baseTop + gesture.dy;
-        top.setValue(newTop);
-
-        const currentOrder = orderRef.current;
-        const draggedIdx = currentOrder.indexOf(card.key);
-        const targetIdx = Math.max(0, Math.min(currentOrder.length - 1, Math.round(newTop / ROW_H)));
-        if (targetIdx !== draggedIdx) {
-          const next = [...currentOrder];
-          next.splice(draggedIdx, 1);
-          next.splice(targetIdx, 0, card.key);
-          setOrder(next);
-        }
-      },
-      onPanResponderRelease: () => {
-        const finalIdx = orderRef.current.indexOf(card.key);
-        Animated.parallel([
-          Animated.timing(top, { toValue: finalIdx * ROW_H, duration: 180, useNativeDriver: false }),
-          Animated.spring(scale, { toValue: 1, useNativeDriver: false, friction: 6 }),
-        ]).start();
-        setDraggingKey(null);
-      },
-    })
-  ).current;
-
-  return (
-    <Animated.View
-      style={[
-        styles.row,
-        isHidden && styles.rowHidden,
-        { position: 'absolute', left: 0, right: 0, top, transform: [{ scale }], zIndex: isDragging ? 10 : 1, elevation: isDragging ? 8 : 2 },
-      ]}
-    >
-      {/* زوايا فوكس — التوقيع البصري المستوحى من إطار كاميرا الدرون */}
-      <View pointerEvents="none" style={[styles.bracket, styles.bracketTL]} />
-      <View pointerEvents="none" style={[styles.bracket, styles.bracketTR]} />
-      <View pointerEvents="none" style={[styles.bracket, styles.bracketBL]} />
-      <View pointerEvents="none" style={[styles.bracket, styles.bracketBR]} />
-
-      <View {...longPressResponder.panHandlers} style={styles.dragHandle} hitSlop={{ top: 10, bottom: 10, left: 10, right: 4 }}>
-        <Ionicons name="reorder-three" size={20} color={C.muted} />
-      </View>
-
-      <View style={[styles.iconBadge, isHidden && styles.iconBadgeMuted]}>
-        <Ionicons name={card.icon} size={19} color={isHidden ? C.muted : C.brandDark} />
-      </View>
-
-      <Text style={[styles.rowTitle, isHidden && styles.rowTitleHidden]} numberOfLines={1}>
-        {card.title}
-      </Text>
-
-      <TouchableOpacity onPress={onCycleSize} style={styles.sizeBtn} hitSlop={6}>
-        <Text style={styles.sizeBtnText}>{SIZE_LABEL[size]}</Text>
-      </TouchableOpacity>
-
-      {onRemoveCustom && (
-        <TouchableOpacity onPress={onRemoveCustom} hitSlop={8} style={{ marginHorizontal: 2 }}>
-          <Ionicons name="trash-outline" size={17} color={C.error} />
-        </TouchableOpacity>
-      )}
-
-      <TouchableOpacity onPress={onToggleHidden} hitSlop={8}>
-        <Ionicons name={isHidden ? 'eye-off-outline' : 'eye-outline'} size={19} color={isHidden ? C.muted : C.brand} />
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
-
-const BRACKET = 14;
-const BRACKET_W = 2;
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.surface2 },
-  hintRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 4 },
+  hintRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 12 },
   hintBracketL: { width: 10, height: 10, borderTopWidth: 1.5, borderRightWidth: 1.5, borderColor: C.brand, transform: [{ rotate: '90deg' }] },
   hintBracketR: { width: 10, height: 10, borderTopWidth: 1.5, borderRightWidth: 1.5, borderColor: C.brand, transform: [{ rotate: '-90deg' }] },
   hint: { flex: 1, fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'center' },
 
   row: {
-    height: ROW_H - 10,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     backgroundColor: C.surface,
     borderRadius: R.md,
     paddingHorizontal: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    paddingVertical: 10,
+    marginBottom: 8,
+    overflow: 'hidden',
+    ...shadow,
   },
   rowHidden: { opacity: 0.5 },
+  bracket: { position: 'absolute', width: 12, height: 12, borderColor: C.brand, opacity: 0.3 },
+  bracketTL: { top: 6, left: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderTopLeftRadius: 4 },
+  bracketBR: { bottom: 6, right: 6, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderBottomRightRadius: 4 },
 
-  bracket: { position: 'absolute', width: BRACKET, height: BRACKET, borderColor: C.brand, opacity: 0.55 },
-  bracketTL: { top: -1, left: -1, borderTopWidth: BRACKET_W, borderLeftWidth: BRACKET_W, borderTopLeftRadius: 6 },
-  bracketTR: { top: -1, right: -1, borderTopWidth: BRACKET_W, borderRightWidth: BRACKET_W, borderTopRightRadius: 6 },
-  bracketBL: { bottom: -1, left: -1, borderBottomWidth: BRACKET_W, borderLeftWidth: BRACKET_W, borderBottomLeftRadius: 6 },
-  bracketBR: { bottom: -1, right: -1, borderBottomWidth: BRACKET_W, borderRightWidth: BRACKET_W, borderBottomRightRadius: 6 },
-
-  dragHandle: { paddingHorizontal: 4, paddingVertical: 10 },
+  arrows: { gap: 2, marginLeft: 6 },
   iconBadge: {
     width: 34,
     height: 34,
@@ -419,6 +318,7 @@ const styles = StyleSheet.create({
   addCustomText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
 
   statsSection: { marginTop: 8 },
+  groupLabel: { fontFamily: F.semibold, fontSize: 11.5, color: C.muted, textAlign: 'right', marginBottom: 6 },
   statsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
   statChip: {
     flexDirection: 'row-reverse',
@@ -436,8 +336,9 @@ const styles = StyleSheet.create({
   statChipTextSelected: { color: C.brandDark },
   statChipBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: C.brand, alignItems: 'center', justifyContent: 'center' },
   statChipBadgeText: { fontFamily: F.bold, fontSize: 9.5, color: '#FFF' },
+
   resetBtn: { alignItems: 'center', paddingVertical: 10 },
   resetText: { fontFamily: F.semibold, fontSize: 13, color: C.muted },
-  saveBtn: { backgroundColor: C.brand, borderRadius: R.lg, paddingVertical: 14, alignItems: 'center', marginTop: 4, marginBottom: 16 },
+  saveBtn: { backgroundColor: C.brand, borderRadius: R.lg, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   saveBtnText: { fontFamily: F.bold, fontSize: 14, color: '#FFF' },
 });

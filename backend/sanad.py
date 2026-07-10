@@ -628,6 +628,44 @@ class SuggestCategoriesReq(BaseModel):
     hint: str = ""
 
 
+class SuggestTaskReq(BaseModel):
+    hint: str = ""  # أي نص كتبه المستخدم لحد الآن بعنوان المهمة (اختياري)
+
+
+@router.post("/sanad/suggest-task")
+async def suggest_task(body: SuggestTaskReq, user: dict = Depends(get_current_user)):
+    """اقتراح مهمة جديدة من سند (عنوان + تفاصيل + أولوية) مبني على المهام
+    المتأخرة والمشاريع الجارية فعليًا — مو نص عشوائي (طلب: زر اقتراح من سند
+    بنموذج إضافة مهمة جديدة)."""
+    overdue = await db.tasks.find({"assignee_id": user["user_id"], "status": {"$ne": "done"}, "due_date": {"$lt": today_str()}}, {"_id": 0, "title": 1}).to_list(10)
+    in_progress_clients = await db.clients.find({"status": "in_progress"}, {"_id": 0, "name": 1, "stage": 1}).to_list(10)
+
+    context_lines = []
+    if overdue:
+        context_lines.append("مهام متأخرة: " + "، ".join(t["title"] for t in overdue))
+    if in_progress_clients:
+        context_lines.append("مشاريع جارية: " + "، ".join(f"{c['name']} ({c.get('stage', '')})" for c in in_progress_clients))
+
+    system = (
+        "أنت سند، مساعد صاحب استوديو تصوير جوي ومونتاج (AZVIO) بالسعودية. "
+        "تقترح مهمة عملية واحدة يحتاجها الحين، بالعربي السعودي المباشر. أعد JSON فقط."
+    )
+    hint_line = f"المستخدم بادئ يكتب: \"{body.hint}\" — كمّل على نفس الفكرة.\n" if body.hint.strip() else ""
+    user_msg = (
+        hint_line
+        + ("\n".join(context_lines) if context_lines else "ما فيه مهام متأخرة ولا مشاريع جارية حالياً — اقترح مهمة عامة مفيدة لصاحب استوديو تصوير.")
+        + "\n\nأعد JSON: {\"title\":\"عنوان قصير\",\"description\":\"سطر أو سطرين تفاصيل\",\"priority\":\"low|normal|high|urgent\"}"
+    )
+    text = await _sanad_ask(system, user_msg)
+    data = _parse_json_block(text) or {}
+    priority = data.get("priority") if data.get("priority") in ("low", "normal", "high", "urgent") else "normal"
+    return {
+        "title": (data.get("title") or "").strip()[:120] or "متابعة مشروع",
+        "description": (data.get("description") or "").strip()[:300],
+        "priority": priority,
+    }
+
+
 @router.post("/sanad/suggest-categories")
 async def suggest_categories(body: SuggestCategoriesReq):
     existing = await db.categories.find({"service_type": body.service_type}, {"_id": 0, "name": 1}).to_list(200)
