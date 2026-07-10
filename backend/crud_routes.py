@@ -1056,7 +1056,7 @@ async def dashboard():
     # إحصائيات المهام السريعة
     tasks_total = await db.tasks.count_documents({})
     tasks_done = await db.tasks.count_documents({"status": "done"})
-    tasks_overdue = await db.tasks.count_documents({"due_date": {"$lt": today_str()}, "status": {"$ne": "done"}})
+    tasks_overdue = await db.tasks.count_documents({"due_date": {"$lt": today_str(), "$ne": ""}, "status": {"$ne": "done"}})
     tasks_pending = await db.tasks.count_documents({"status": {"$ne": "done"}})
 
     # عملاء متكررون (نفس contact_id تكرر مرتين فأكثر) — طلب: إحصائيات على العملاء

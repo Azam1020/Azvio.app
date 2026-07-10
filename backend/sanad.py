@@ -637,7 +637,7 @@ async def suggest_task(body: SuggestTaskReq, user: dict = Depends(get_current_us
     """اقتراح مهمة جديدة من سند (عنوان + تفاصيل + أولوية) مبني على المهام
     المتأخرة والمشاريع الجارية فعليًا — مو نص عشوائي (طلب: زر اقتراح من سند
     بنموذج إضافة مهمة جديدة)."""
-    overdue = await db.tasks.find({"assignee_id": user["user_id"], "status": {"$ne": "done"}, "due_date": {"$lt": today_str()}}, {"_id": 0, "title": 1}).to_list(10)
+    overdue = await db.tasks.find({"assignee_id": user["user_id"], "status": {"$ne": "done"}, "due_date": {"$lt": today_str(), "$ne": ""}}, {"_id": 0, "title": 1}).to_list(10)
     in_progress_clients = await db.clients.find({"status": "in_progress"}, {"_id": 0, "name": 1, "stage": 1}).to_list(10)
 
     context_lines = []

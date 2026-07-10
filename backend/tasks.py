@@ -33,6 +33,16 @@ def _can_manage(user: dict) -> bool:
     return user.get("role") in ("admin", "project_manager")
 
 
+def _my_tasks_filter(user: dict) -> dict:
+    """فلتر مهام المستخدم لشاشة اليوم — يشمل المهام غير المُسندة لحد (assignee_id
+    فاضي) لو المستخدم مدير/مدير مشروع، عشان ما تختفي مهام قديمة أو مستوردة بدون
+    تعيين صريح (طلب: إصلاح عدم تطابق عدد المهام المتأخرة مع قسم اليوم — بلاغ
+    وصل عبر سند)."""
+    if _can_manage(user):
+        return {"assignee_id": {"$in": [user["user_id"], ""]}}
+    return {"assignee_id": user["user_id"]}
+
+
 class TaskCreate(BaseModel):
     title: str
     description: str = ""
@@ -74,10 +84,7 @@ async def my_today(user: dict = Depends(get_current_user)):
     """Tasks for the current user that are due today or overdue and not done."""
     today = today_str()
     tasks = await db.tasks.find(
-        {
-            "assignee_id": user["user_id"],
-            "status": {"$ne": "done"},
-        },
+        {**_my_tasks_filter(user), "status": {"$ne": "done"}},
         {"_id": 0},
     ).sort([("due_date", 1)]).to_list(500)
     overdue = [t for t in tasks if t.get("due_date") and t["due_date"] < today]
@@ -234,7 +241,7 @@ async def get_sanad_today_plan(user: dict = Depends(get_current_user)):
     if cached:
         return cached
 
-    all_tasks = await db.tasks.find({"assignee_id": user["user_id"], "status": {"$ne": "done"}}, {"_id": 0}).to_list(200)
+    all_tasks = await db.tasks.find({**_my_tasks_filter(user), "status": {"$ne": "done"}}, {"_id": 0}).to_list(200)
     overdue = [t for t in all_tasks if t.get("due_date") and t["due_date"] < today]
     due_today = [t for t in all_tasks if t.get("due_date") == today]
     events_today = await db.events.find({"date": today}, {"_id": 0, "title": 1, "time": 1}).sort("time", 1).to_list(20)
@@ -285,7 +292,7 @@ async def get_enhanced_today(user: dict = Depends(get_current_user)):
     today = today_str()
     
     # احصل على جميع مهام المستخدم غير المكتملة + المكتملة اليوم فقط
-    all_tasks = await db.tasks.find({"assignee_id": user["user_id"]}, {"_id": 0}).to_list(1000)
+    all_tasks = await db.tasks.find(_my_tasks_filter(user), {"_id": 0}).to_list(1000)
     
     overdue = [t for t in all_tasks if t.get("due_date") and t["due_date"] < today and t["status"] != "done"]
     due_today = [t for t in all_tasks if t.get("due_date") == today and t["status"] != "done"]
