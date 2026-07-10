@@ -33,6 +33,11 @@ export default function InvoiceDesignSettingsScreen() {
     logo_url: '',
     background_url: '',
     background_opacity: 0.15,
+    show_logo: true,
+    tax_number: '',
+    show_tax_number: false,
+    footer_text: 'AZVIO — التصوير الجوي بالدرون والمونتاج',
+    terms_text: '',
   });
 
   const load = useCallback(async () => {
@@ -49,6 +54,11 @@ export default function InvoiceDesignSettingsScreen() {
         logo_url: r.logo_url || '',
         background_url: r.background_url || '',
         background_opacity: r.background_opacity ?? 0.15,
+        show_logo: r.show_logo ?? true,
+        tax_number: r.tax_number || '',
+        show_tax_number: r.show_tax_number ?? false,
+        footer_text: r.footer_text || 'AZVIO — التصوير الجوي بالدرون والمونتاج',
+        terms_text: r.terms_text || '',
       });
     } catch {}
     setLoading(false);
@@ -165,6 +175,11 @@ export default function InvoiceDesignSettingsScreen() {
           show_sub_category: settings.show_sub_category,
           show_notes: settings.show_notes,
           accent_color: settings.accent_color,
+          show_logo: settings.show_logo,
+          tax_number: settings.tax_number,
+          show_tax_number: settings.show_tax_number,
+          footer_text: settings.footer_text,
+          terms_text: settings.terms_text,
         }),
       });
       Alert.alert('تم الحفظ', '✅ صار هذا التصميم افتراضي لكل الفواتير الجديدة');
@@ -200,6 +215,14 @@ export default function InvoiceDesignSettingsScreen() {
                 <TouchableOpacity style={styles.removeLogoBtn} onPress={removeLogo}>
                   <Ionicons name="trash-outline" size={16} color={C.error} />
                 </TouchableOpacity>
+              </View>
+              <View style={styles.switchRow}>
+                <Switch
+                  value={settings.show_logo}
+                  onValueChange={(v) => setSettings((s) => ({ ...s, show_logo: v }))}
+                  trackColor={{ true: C.brand, false: C.border }}
+                />
+                <Text style={styles.switchLabel}>إظهار الشعار بالفاتورة</Text>
               </View>
             </View>
           ) : (
@@ -337,6 +360,43 @@ export default function InvoiceDesignSettingsScreen() {
             />
             <Text style={styles.switchLabel}>إظهار الملاحظات بالفاتورة</Text>
           </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>بيانات إضافية بالفاتورة</Text>
+
+          <View style={styles.switchRow}>
+            <Switch
+              value={settings.show_tax_number}
+              onValueChange={(v) => setSettings((s) => ({ ...s, show_tax_number: v }))}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+            <Text style={styles.switchLabel}>إظهار الرقم الضريبي / السجل التجاري</Text>
+          </View>
+
+          {settings.show_tax_number && (
+            <Field
+              label="الرقم الضريبي / السجل التجاري"
+              value={settings.tax_number}
+              onChangeText={(v) => setSettings((s) => ({ ...s, tax_number: v }))}
+              placeholder="مثال: 3XXXXXXXXXXXXXX"
+            />
+          )}
+
+          <Field
+            label="نص تذييل الفاتورة"
+            value={settings.footer_text}
+            onChangeText={(v) => setSettings((s) => ({ ...s, footer_text: v }))}
+            placeholder="AZVIO — التصوير الجوي بالدرون والمونتاج"
+          />
+
+          <Field
+            label="شروط أو ملاحظات ثابتة (اختياري)"
+            value={settings.terms_text}
+            onChangeText={(v) => setSettings((s) => ({ ...s, terms_text: v }))}
+            placeholder="مثال: يسري السعر لمدة 7 أيام — الدفع مقدماً 50٪"
+            multiline
+          />
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={save} disabled={saving}>

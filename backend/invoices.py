@@ -53,7 +53,11 @@ def new_id():
 # تقريباً (36 رمز) — تصير موجودة كل ما ينتهي حرف مثل "ة" أو "ر" الكلمة بدون اتصال بعده.
 # بدونها reportlab يرسم مربع فارغ بدل الحرف. الحل: نرجّع الصيغة المنفردة تحديداً (بدون ما
 # نلمس صيغ الوصل الأول/الوسط/الآخر الشغالة صح) لشكلها الأساسي المتوفر بالخط — نفس الشكل بصرياً.
-_ISOLATED_FORM_FIX = {c: unicodedata.normalize("NFKC", chr(c)) for c in range(0xFE80, 0xFEF5) if unicodedata.category(chr(c)) == "Lo"}
+_ISOLATED_FORM_FIX = {
+    c: unicodedata.normalize("NFKC", chr(c))
+    for c in range(0xFE80, 0xFEF5)
+    if unicodedata.category(chr(c)) == "Lo" and "ISOLATED FORM" in unicodedata.name(chr(c), "")
+}
 
 
 def rtl(text: str) -> str:
@@ -274,8 +278,8 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
         except Exception:
             pass  # فشل تحميل الخلفية ما يوقف توليد الفاتورة نفسها
 
-    # الشعار المخصص (لو مرفوع) — يظهر أعلى يسار الصفحة
-    logo_url = settings.get("logo_url", "")
+    # الشعار المخصص (لو مرفوع ومفعّل) — يظهر أعلى يسار الصفحة
+    logo_url = settings.get("logo_url", "") if settings.get("show_logo", True) else ""
     if logo_url:
         try:
             import urllib.request
@@ -300,7 +304,12 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
     c.drawRightString(right, y, rtl(f"رقم المستند: {doc['display_number']}"))
     y -= 16
     c.drawRightString(right, y, rtl(f"التاريخ: {doc['created_at'][:10]}"))
-    y -= 30
+    y -= 16
+    tax_number = settings.get("tax_number", "")
+    if settings.get("show_tax_number", False) and tax_number:
+        c.drawRightString(right, y, rtl(f"الرقم الضريبي: {tax_number}"))
+        y -= 16
+    y -= 14
 
     c.setFont("Cairo-Bold", 13)
     c.drawRightString(right, y, rtl(f"إلى: {doc['client_name']}"))
@@ -315,7 +324,7 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
     c.setFillColor(accent)
     c.setFont("Cairo-Bold", 11)
     c.drawRightString(right, y, rtl("الوصف"))
-    c.drawString(50, y, "المبلغ (ر.س)")
+    c.drawString(50, y, rtl("المبلغ (ر.س)"))
     c.setFillColor(colors.black)
     y -= 6
     c.line(50, y, right, y)
@@ -352,8 +361,20 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
         c.drawRightString(right, y, rtl("ملاحظات: " + doc["notes"]))
         y -= 20
 
+    terms_text = settings.get("terms_text", "")
+    if terms_text:
+        y -= 6
+        c.setFont("Cairo", 9)
+        c.setFillColor(colors.grey)
+        for line in terms_text.split("\n"):
+            if line.strip():
+                c.drawRightString(right, y, rtl(line.strip()))
+                y -= 14
+        c.setFillColor(colors.black)
+
+    footer_text = settings.get("footer_text", "") or "AZVIO — التصوير الجوي بالدرون والمونتاج"
     c.setFont("Cairo", 9)
-    c.drawRightString(right, 40, rtl("AZVIO — التصوير الجوي بالدرون والمونتاج"))
+    c.drawRightString(right, 40, rtl(footer_text))
 
     c.showPage()
     c.save()
@@ -592,6 +613,11 @@ class InvoiceDesignSettings(BaseModel):
     show_sub_category: bool = True
     show_notes: bool = True
     accent_color: str = ""  # لون مخصص بصيغة hex (اختياري) — لو فاضي يستخدم لون brand الافتراضي
+    show_logo: bool = True  # يسمح إخفاء الشعار مؤقتاً بدون حذفه (طلب: حرية الاختيار والتعديل بكل الورقة)
+    tax_number: str = ""  # الرقم الضريبي / السجل التجاري — يظهر تحت بيانات المستند لو معبّى
+    show_tax_number: bool = False
+    footer_text: str = "AZVIO — التصوير الجوي بالدرون والمونتاج"  # نص التذييل، قابل للتعديل الكامل
+    terms_text: str = ""  # شروط/ملاحظات ثابتة تظهر بكل فاتورة (شروط الدفع، بيانات بنكية...)
 
 
 @router.get("/invoices/design-settings")
@@ -610,6 +636,11 @@ async def get_design_settings():
         "logo_url": doc.get("logo_url", ""),
         "background_url": doc.get("background_url", ""),
         "background_opacity": doc.get("background_opacity", 0.15),
+        "show_logo": doc.get("show_logo", True),
+        "tax_number": doc.get("tax_number", ""),
+        "show_tax_number": doc.get("show_tax_number", False),
+        "footer_text": doc.get("footer_text", "AZVIO — التصوير الجوي بالدرون والمونتاج"),
+        "terms_text": doc.get("terms_text", ""),
     }
 
 
@@ -625,6 +656,11 @@ async def update_design_settings(body: InvoiceDesignSettings):
             "show_sub_category": body.show_sub_category,
             "show_notes": body.show_notes,
             "accent_color": body.accent_color,
+            "show_logo": body.show_logo,
+            "tax_number": body.tax_number,
+            "show_tax_number": body.show_tax_number,
+            "footer_text": body.footer_text,
+            "terms_text": body.terms_text,
             "updated_at": datetime.now().isoformat(),
         }},
         upsert=True,

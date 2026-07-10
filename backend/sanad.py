@@ -127,6 +127,8 @@ async def build_context() -> str:
             "agreed_price": 1,
             "drive_link": 1,
             "notes": 1,
+            "project_details": 1,
+            "custom_fields": 1,
             "updated_at": 1,
         },
     ).sort("created_at", -1).to_list(50)
@@ -159,6 +161,12 @@ async def build_context() -> str:
                 piece += ", رابط ملفات متوفر"
             if c.get("notes"):
                 piece += f", ملاحظات: {c['notes'][:80]}"
+            if c.get("project_details"):
+                piece += f", تفاصيل المشروع: {c['project_details'][:100]}"
+            if c.get("custom_fields"):
+                extra = ", ".join(f"{f.get('label')}: {f.get('value')}" for f in c["custom_fields"] if f.get("label"))
+                if extra:
+                    piece += f", {extra}"
             piece += ")"
             detail_parts.append(piece)
             # Stalled-stage detection: not delivered and untouched for 4+ days

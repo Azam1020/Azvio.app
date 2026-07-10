@@ -211,16 +211,18 @@ export default function ClientDetail() {
       source: client.source,
       drive_link: client.drive_link,
       notes: client.notes,
+      project_details: client.project_details || '',
+      custom_fields: client.custom_fields || [],
     });
     setEditModal(true);
   };
 
   const [addProjectModal, setAddProjectModal] = useState(false);
-  const [newProjectForm, setNewProjectForm] = useState({ service_type: 'drone', sub_category: '', agreed_price: '', notes: '' });
+  const [newProjectForm, setNewProjectForm] = useState({ service_type: 'drone', sub_category: '', agreed_price: '', notes: '', project_details: '' });
   const [savingProject, setSavingProject] = useState(false);
 
   const openAddProject = () => {
-    setNewProjectForm({ service_type: client.service_type || 'drone', sub_category: '', agreed_price: '', notes: '' });
+    setNewProjectForm({ service_type: client.service_type || 'drone', sub_category: '', agreed_price: '', notes: '', project_details: '' });
     setAddProjectModal(true);
   };
 
@@ -238,6 +240,7 @@ export default function ClientDetail() {
           sub_category: newProjectForm.sub_category,
           agreed_price: parseFloat(newProjectForm.agreed_price) || 0,
           notes: newProjectForm.notes,
+          project_details: newProjectForm.project_details,
         }),
       });
       setAddProjectModal(false);
@@ -246,6 +249,27 @@ export default function ClientDetail() {
       Alert.alert('تعذّر الإضافة', e?.message || 'حدث خطأ');
     }
     setSavingProject(false);
+  };
+
+  const addCustomField = () => {
+    setForm((f: any) => ({
+      ...f,
+      custom_fields: [...(f.custom_fields || []), { id: Math.random().toString(36).slice(2), label: '', value: '' }],
+    }));
+  };
+
+  const updateCustomField = (fieldId: string, key: 'label' | 'value', text: string) => {
+    setForm((f: any) => ({
+      ...f,
+      custom_fields: (f.custom_fields || []).map((cf: any) => (cf.id === fieldId ? { ...cf, [key]: text } : cf)),
+    }));
+  };
+
+  const removeCustomField = (fieldId: string) => {
+    setForm((f: any) => ({
+      ...f,
+      custom_fields: (f.custom_fields || []).filter((cf: any) => cf.id !== fieldId),
+    }));
   };
 
   const saveEdit = async () => {
@@ -399,7 +423,20 @@ export default function ClientDetail() {
               <Text style={styles.driveText}>فتح ملفات Google Drive</Text>
             </TouchableOpacity>
           )}
+          {!!client.project_details && (
+            <View style={{ marginTop: 10 }}>
+              <Text style={styles.fieldLabel}>تفاصيل المشروع</Text>
+              <Text style={styles.notes}>{client.project_details}</Text>
+            </View>
+          )}
           {!!client.notes && <Text style={styles.notes}>{client.notes}</Text>}
+          {!!(client.custom_fields && client.custom_fields.length) && (
+            <View style={{ marginTop: 10, gap: 6 }}>
+              {client.custom_fields.map((f: any) => (
+                <InfoRow key={f.id} icon="information-circle-outline" label={f.label} value={f.value || '—'} />
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Logs */}
@@ -529,7 +566,27 @@ export default function ClientDetail() {
         />
         <Field label="مصدر العميل" value={form.source} onChangeText={(v) => setForm({ ...form, source: v })} />
         <Field label="رابط Google Drive" value={form.drive_link} onChangeText={(v) => setForm({ ...form, drive_link: v })} autoCapitalize="none" />
+        <Field label="تفاصيل المشروع" value={form.project_details} onChangeText={(v) => setForm({ ...form, project_details: v })} multiline placeholder="الموقع، المتطلبات، مدة التسليم..." />
         <Field label="ملاحظات" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} multiline />
+
+        <Text style={styles.fieldLabel}>حقول إضافية مخصصة</Text>
+        {(form.custom_fields || []).map((cf: any) => (
+          <View key={cf.id} style={{ flexDirection: 'row-reverse', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <TouchableOpacity onPress={() => removeCustomField(cf.id)} style={{ padding: 6 }}>
+              <Ionicons name="close-circle" size={20} color={C.error} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Field label="" value={cf.label} onChangeText={(v) => updateCustomField(cf.id, 'label', v)} placeholder="اسم الحقل (مثال: رقم الرخصة)" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Field label="" value={cf.value} onChangeText={(v) => updateCustomField(cf.id, 'value', v)} placeholder="القيمة" />
+            </View>
+          </View>
+        ))}
+        <TouchableOpacity onPress={addCustomField} style={styles.addFieldBtn}>
+          <Ionicons name="add-circle-outline" size={18} color={C.brand} />
+          <Text style={styles.addFieldText}>إضافة حقل جديد</Text>
+        </TouchableOpacity>
       </AppModal>
 
       <AppModal
@@ -565,6 +622,13 @@ export default function ClientDetail() {
           onChangeText={(v) => setNewProjectForm({ ...newProjectForm, notes: v })}
           multiline
         />
+        <Field
+          label="تفاصيل المشروع"
+          value={newProjectForm.project_details}
+          onChangeText={(v) => setNewProjectForm({ ...newProjectForm, project_details: v })}
+          multiline
+          placeholder="الموقع، المتطلبات، مدة التسليم..."
+        />
       </AppModal>
 
       <AppModal visible={signModal} title="توقيع موافقة العميل" onClose={() => setSignModal(false)} scrollEnabled={false}>
@@ -587,6 +651,8 @@ function InfoRow({ icon, label, value }: { icon: any; label: string; value: stri
 }
 
 const styles = StyleSheet.create({
+  addFieldBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingVertical: 10, justifyContent: 'center' },
+  addFieldText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
   statusRow: { flexDirection: 'row-reverse', backgroundColor: C.surface, borderRadius: R.md, padding: 4, gap: 4, marginBottom: 12, ...shadow },
   statusBtn: { flex: 1, paddingVertical: 10, borderRadius: R.sm + 2, alignItems: 'center' },
   statusActive: { backgroundColor: C.brand },
