@@ -141,7 +141,7 @@ export default function FinanceScreen() {
     setModal(true);
   };
 
-  const pickAttachments = async () => {
+  const pickAttachmentsFromFiles = async () => {
     const res = await DocumentPicker.getDocumentAsync({
       type: ['image/*', 'application/pdf'],
       multiple: true,
@@ -149,6 +149,39 @@ export default function FinanceScreen() {
     });
     if (res.canceled) return;
     setPendingAttachments((prev) => [...prev, ...res.assets]);
+  };
+
+  const pickAttachmentsFromGallery = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('الإذن مطلوب', 'يحتاج التطبيق إذن الوصول لمعرض الصور');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true, // طلب: اختيار عدة صور مباشرة من المعرض بدون حفظها بملف أولاً
+      quality: 0.8,
+    });
+    if (res.canceled || !res.assets?.length) return;
+    const mapped = res.assets.map((a) => ({
+      uri: a.uri,
+      name: a.fileName || `photo_${Date.now()}.jpg`,
+      mimeType: a.mimeType || 'image/jpeg',
+    }));
+    setPendingAttachments((prev) => [...prev, ...mapped]);
+  };
+
+  // زر المرفقات يعرض خيارين: من المعرض مباشرة (الأسهل للصور) أو من الملفات (للـ PDF)
+  const pickAttachments = () => {
+    if (Platform.OS === 'web') {
+      pickAttachmentsFromFiles();
+      return;
+    }
+    Alert.alert('إضافة مرفق', 'اختر المصدر', [
+      { text: 'من معرض الصور', onPress: pickAttachmentsFromGallery },
+      { text: 'من الملفات (PDF/صور)', onPress: pickAttachmentsFromFiles },
+      { text: 'إلغاء', style: 'cancel' },
+    ]);
   };
 
   const removePendingAttachment = (idx: number) => {
@@ -246,7 +279,7 @@ export default function FinanceScreen() {
     setAnalyzing(false);
   };
 
-  const pickInvoice = async () => {
+  const pickInvoiceFromFiles = async () => {
     setInvoiceError('');
     const res = await DocumentPicker.getDocumentAsync({
       type: ['application/pdf', 'image/*'],
@@ -254,6 +287,31 @@ export default function FinanceScreen() {
     });
     if (res.canceled || !res.assets?.length) return;
     await analyzeInvoiceAsset(res.assets[0] as any);
+  };
+
+  const pickInvoiceFromGallery = async () => {
+    setInvoiceError('');
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('الإذن مطلوب', 'يحتاج التطبيق إذن الوصول لمعرض الصور');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (res.canceled || !res.assets?.length) return;
+    const a = res.assets[0];
+    await analyzeInvoiceAsset({ uri: a.uri, name: a.fileName || 'receipt.jpg', mimeType: a.mimeType || 'image/jpeg' });
+  };
+
+  const pickInvoice = () => {
+    if (Platform.OS === 'web') {
+      pickInvoiceFromFiles();
+      return;
+    }
+    Alert.alert('رفع فاتورة/إيصال', 'اختر المصدر', [
+      { text: 'من معرض الصور', onPress: pickInvoiceFromGallery },
+      { text: 'من الملفات', onPress: pickInvoiceFromFiles },
+      { text: 'إلغاء', style: 'cancel' },
+    ]);
   };
 
   const scanReceipt = async () => {

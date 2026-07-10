@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -41,15 +42,7 @@ export default function MyPricingScreen() {
   const [reviewItems, setReviewItems] = useState<any[] | null>(null);
   const [reviewServiceType, setReviewServiceType] = useState('drone');
 
-  const pickAndAnalyzeFile = async () => {
-    const DocumentPicker = await import('expo-document-picker');
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['image/*', 'application/pdf'],
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-
-    const asset = result.assets[0];
+  const analyzePriceAsset = async (asset: { uri: string; name?: string; mimeType?: string }) => {
     setAnalyzing(true);
     try {
       const fd = new FormData();
@@ -72,6 +65,39 @@ export default function MyPricingScreen() {
       Alert.alert('تعذّر التحليل', e?.message || 'حدث خطأ');
     }
     setAnalyzing(false);
+  };
+
+  const pickFromFiles = async () => {
+    const DocumentPicker = await import('expo-document-picker');
+    const result = await DocumentPicker.getDocumentAsync({ type: ['image/*', 'application/pdf'], copyToCacheDirectory: true });
+    if (result.canceled || !result.assets?.[0]) return;
+    await analyzePriceAsset(result.assets[0] as any);
+  };
+
+  const pickFromGallery = async () => {
+    const ImagePicker = await import('expo-image-picker');
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('الإذن مطلوب', 'يحتاج التطبيق إذن الوصول لمعرض الصور');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (result.canceled || !result.assets?.length) return;
+    const a = result.assets[0];
+    await analyzePriceAsset({ uri: a.uri, name: a.fileName || 'price.jpg', mimeType: a.mimeType || 'image/jpeg' });
+  };
+
+  // طلب: اختيار مباشر من معرض الصور بدون الاضطرار لحفظها بملف أولاً
+  const pickAndAnalyzeFile = () => {
+    if (Platform.OS === 'web') {
+      pickFromFiles();
+      return;
+    }
+    Alert.alert('رفع قائمة أسعار', 'اختر المصدر', [
+      { text: 'من معرض الصور', onPress: pickFromGallery },
+      { text: 'من الملفات', onPress: pickFromFiles },
+      { text: 'إلغاء', style: 'cancel' },
+    ]);
   };
 
   const confirmReviewItems = async (toAdd: any[]) => {

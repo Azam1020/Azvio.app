@@ -3,6 +3,8 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -34,6 +36,7 @@ type Analysis = {
     notes: string[];
     alerts: string[];
     summary: string;
+    media?: { name: string; url: string; type: 'image' | 'video' }[];
   };
 };
 
@@ -79,26 +82,34 @@ export default function WhatsAppScreen() {
       const res = await DocumentPicker.getDocumentAsync({
         type: ['text/plain', 'application/zip', '*/*'],
         copyToCacheDirectory: true,
+        multiple: true, // طلب: رفع أكثر من ملف دفعة وحدة (مثلاً محادثتين مع وسائطهم)
       });
-      if (res.canceled || !res.assets?.[0]) return;
-      const asset = res.assets[0];
-      if (asset.size && asset.size > 5 * 1024 * 1024) {
-        Alert.alert('الملف كبير', 'الحد الأقصى 5MB لملفات المحادثات.');
+      if (res.canceled || !res.assets?.length) return;
+      const assets = res.assets;
+      const tooBig = assets.find((a) => a.size && a.size > 25 * 1024 * 1024);
+      if (tooBig) {
+        Alert.alert('ملف كبير', `الحد الأقصى 25MB للملف الواحد (${tooBig.name} أكبر من كذا).`);
         return;
       }
       setUploading(true);
       const fd = new FormData();
-      if (Platform.OS === 'web' && (asset as any).file) {
-        fd.append('file', (asset as any).file, asset.name);
-      } else {
-        fd.append('file', {
-          uri: asset.uri,
-          name: asset.name || 'chat.txt',
-          type: asset.mimeType || 'text/plain',
-        } as any);
+      for (const asset of assets) {
+        if (Platform.OS === 'web' && (asset as any).file) {
+          fd.append('files', (asset as any).file, asset.name);
+        } else {
+          fd.append('files', {
+            uri: asset.uri,
+            name: asset.name || 'chat.txt',
+            type: asset.mimeType || 'text/plain',
+          } as any);
+        }
       }
       const r = await apiUpload('/whatsapp/analyze', fd);
-      Alert.alert('تم التحليل ✅', 'اضغط على البطاقة لعرض النتيجة وتطبيقها');
+      const mediaCount = r?.analysis?.media?.length || 0;
+      Alert.alert(
+        'تم التحليل ✅',
+        mediaCount > 0 ? `اضغط على البطاقة لعرض النتيجة (${mediaCount} صورة/فيديو مرفقة)` : 'اضغط على البطاقة لعرض النتيجة وتطبيقها'
+      );
       load();
       // Auto-open the newly created analysis
       setDetail(r);
@@ -260,6 +271,25 @@ export default function WhatsAppScreen() {
       >
         {detail && (
           <ScrollView style={{ maxHeight: 500 }}>
+            {!!detail.analysis.media?.length && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>🖼️ الصور والفيديوهات ({detail.analysis.media.length})</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                  {detail.analysis.media.map((m) => (
+                    <TouchableOpacity key={m.url} onPress={() => Linking.openURL(m.url)}>
+                      {m.type === 'image' ? (
+                        <Image source={{ uri: m.url }} style={styles.mediaThumb} />
+                      ) : (
+                        <View style={[styles.mediaThumb, styles.mediaVideoThumb]}>
+                          <Ionicons name="play-circle" size={28} color="#FFF" />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
             {!!detail.analysis.summary && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>📝 ملخص</Text>
@@ -385,6 +415,8 @@ function OptRow({ label, value, onChange }: { label: string; value: boolean; onC
 }
 
 const styles = StyleSheet.create({
+  mediaThumb: { width: 84, height: 84, borderRadius: R.md, backgroundColor: C.surface2 },
+  mediaVideoThumb: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#00000055' },
   uploadBtn: {
     width: 38,
     height: 38,

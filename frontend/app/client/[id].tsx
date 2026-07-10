@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   Platform,
   RefreshControl,
@@ -437,6 +438,24 @@ export default function ClientDetail() {
               ))}
             </View>
           )}
+          {!!(client.attachments && client.attachments.length) && (
+            <View style={{ marginTop: 12 }}>
+              <Text style={styles.fieldLabel}>المرفقات ({client.attachments.length})</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 6 }}>
+                {client.attachments.map((m: any) => (
+                  <TouchableOpacity key={m.url} onPress={() => Linking.openURL(m.url)}>
+                    {m.type === 'image' ? (
+                      <Image source={{ uri: m.url }} style={styles.attachmentThumb} />
+                    ) : (
+                      <View style={[styles.attachmentThumb, styles.attachmentVideoThumb]}>
+                        <Ionicons name="play-circle" size={26} color="#FFF" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
         </View>
 
         {/* Logs */}
@@ -653,6 +672,8 @@ function InfoRow({ icon, label, value }: { icon: any; label: string; value: stri
 const styles = StyleSheet.create({
   addFieldBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingVertical: 10, justifyContent: 'center' },
   addFieldText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
+  attachmentThumb: { width: 76, height: 76, borderRadius: R.md, backgroundColor: C.surface2 },
+  attachmentVideoThumb: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#00000055' },
   statusRow: { flexDirection: 'row-reverse', backgroundColor: C.surface, borderRadius: R.md, padding: 4, gap: 4, marginBottom: 12, ...shadow },
   statusBtn: { flex: 1, paddingVertical: 10, borderRadius: R.sm + 2, alignItems: 'center' },
   statusActive: { backgroundColor: C.brand },

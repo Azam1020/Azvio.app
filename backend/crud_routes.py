@@ -49,6 +49,7 @@ class ClientCreate(BaseModel):
     notes: str = ""
     project_details: str = ""  # تفاصيل المشروع: الموقع، المتطلبات، التسليمات... (طلب: إضافة تفاصيل المشروع)
     custom_fields: list[dict] = []  # حقول حرة إضافية {id, label, value} — لأي معلومة ثانية تخص العميل/المشروع
+    attachments: list[dict] = []  # مرفقات {name, url, type} — صور/فيديوهات (مثلاً من تحليل واتساب)
 
 
 class ClientUpdate(BaseModel):
@@ -64,6 +65,7 @@ class ClientUpdate(BaseModel):
     notes: Optional[str] = None
     project_details: Optional[str] = None
     custom_fields: Optional[list[dict]] = None
+    attachments: Optional[list[dict]] = None
     approval_signature: Optional[str] = None
     approved_at: Optional[str] = None
     portal_token: Optional[str] = None

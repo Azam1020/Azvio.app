@@ -1,8 +1,11 @@
 """WhatsApp chat analysis — accepts .txt exports, extracts clients/prices/events/notes/alerts via Sanad."""
+import io
 import json
+import mimetypes
 import os
 import re
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -12,8 +15,17 @@ from pydantic import BaseModel
 from auth import get_current_user
 from database import db, today_str, new_portal_token
 from llm_client import ask_text, LLMError
+import supabase_storage
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+
+# امتدادات الصور والفيديوهات المدعومة داخل تصدير واتساب (طلب: تحليل واتساب
+# يشمل الصور والفيديوهات مو بس النص)
+MEDIA_EXTENSIONS = {
+    ".jpg": "image", ".jpeg": "image", ".png": "image", ".webp": "image", ".gif": "image",
+    ".mp4": "video", ".mov": "video", ".m4v": "video", ".3gp": "video",
+}
+MAX_MEDIA_FILES = 20  # حد أعلى لعدد الملفات المرفوعة لسوبابيس بكل محادثة (تحكم بالتكلفة/الوقت)
 
 
 
@@ -124,62 +136,98 @@ def _normalize_analysis(raw: dict) -> dict:
     }
 
 
-@router.post("/whatsapp/analyze")
-async def analyze_chat(file: UploadFile = File(...), label: Optional[str] = Form(None), user=Depends(get_current_user)):
-    """Upload a WhatsApp chat export (.txt), analyze it, save the result, return extracted structured data."""
-    if not file.filename or not file.filename.lower().endswith((".txt", ".zip", ".chat")):
-        raise HTTPException(status_code=400, detail="الرجاء رفع ملف تصدير محادثة واتساب (.txt)")
+async def _extract_and_upload_media(data: bytes, analysis_id: str) -> list[dict]:
+    """يفك ملف ZIP الخاص بتصدير واتساب، يلقط الصور والفيديوهات المرفقة (بدون
+    النص)، يرفعها لسوبابيس، ويرجّع روابطها. لو سوبابيس مو مهيّأ، يتجاهل الوسائط
+    بصمت بدل ما يفشل التحليل كامل (النص أهم شي)."""
+    media: list[dict] = []
     try:
-        data = await file.read()
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            names = [n for n in z.namelist() if os.path.splitext(n)[1].lower() in MEDIA_EXTENSIONS]
+            for name in names[:MAX_MEDIA_FILES]:
+                ext = os.path.splitext(name)[1].lower()
+                kind = MEDIA_EXTENSIONS[ext]
+                try:
+                    with z.open(name) as f:
+                        file_bytes = f.read()
+                    mime = mimetypes.guess_type(name)[0] or ("image/jpeg" if kind == "image" else "video/mp4")
+                    uploaded = await supabase_storage.upload_bytes("whatsapp", analysis_id, os.path.basename(name), file_bytes, mime)
+                    media.append({"name": os.path.basename(name), "url": uploaded["url"], "type": kind})
+                except Exception as e:
+                    print(f"[whatsapp media] تعذر رفع {name}: {e}")
+                    continue
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"تعذر قراءة الملف: {e}")
+        print(f"[whatsapp media] تعذر فتح ZIP للوسائط: {e}")
+    return media
 
-    # If it's a zip (WhatsApp iOS export), extract the .txt inside
-    if file.filename.lower().endswith(".zip"):
+
+@router.post("/whatsapp/analyze")
+async def analyze_chat(files: list[UploadFile] = File(...), label: Optional[str] = Form(None), user=Depends(get_current_user)):
+    """Upload one or more WhatsApp chat exports (.txt/.zip), analyze them together,
+    extract any attached images/videos from ZIP exports, save the result, return
+    extracted structured data. (طلب: رفع أكثر من ملف + تحليل الصور والفيديوهات)"""
+    for f in files:
+        if not f.filename or not f.filename.lower().endswith((".txt", ".zip", ".chat")):
+            raise HTTPException(status_code=400, detail=f"صيغة غير مدعومة: {f.filename}")
+
+    analysis_id = uuid.uuid4().hex
+    combined_chat_parts: list[str] = []
+    all_media: list[dict] = []
+    first_filename = files[0].filename if files else "محادثة"
+
+    for f in files:
         try:
-            import io
-            import zipfile
-            with zipfile.ZipFile(io.BytesIO(data)) as z:
-                txt_name = next((n for n in z.namelist() if n.lower().endswith(".txt")), None)
-                if not txt_name:
-                    raise HTTPException(status_code=400, detail="لم أجد ملف نصي داخل ZIP")
-                with z.open(txt_name) as f:
-                    data = f.read()
-        except HTTPException:
-            raise
+            data = await f.read()
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"تعذر فك ZIP: {e}")
+            raise HTTPException(status_code=400, detail=f"تعذر قراءة الملف {f.filename}: {e}")
 
-    try:
-        chat_text = data.decode("utf-8", errors="ignore")
-    except Exception:
-        chat_text = data.decode("cp1256", errors="ignore")
+        if f.filename.lower().endswith(".zip"):
+            # الوسائط (صور/فيديوهات) — نستخرجها ونرفعها بصورة منفصلة قبل ما نفك النص
+            all_media.extend(await _extract_and_upload_media(data, analysis_id))
+            try:
+                with zipfile.ZipFile(io.BytesIO(data)) as z:
+                    txt_name = next((n for n in z.namelist() if n.lower().endswith(".txt")), None)
+                    if not txt_name:
+                        continue  # زيب فيه وسائط بس بدون نص محادثة — نتجاهل النص ونكمل
+                    with z.open(txt_name) as tf:
+                        data = tf.read()
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"تعذر فك ZIP ({f.filename}): {e}")
 
-    chat_text = _strip_and_limit(chat_text)
-    if not chat_text.strip():
-        raise HTTPException(status_code=400, detail="الملف فارغ")
+        try:
+            combined_chat_parts.append(data.decode("utf-8", errors="ignore"))
+        except Exception:
+            combined_chat_parts.append(data.decode("cp1256", errors="ignore"))
 
-    try:
-        text = await ask_text(
-            system="أنت خبير تحليل محادثات واتساب باللغة العربية وتستخرج البيانات بدقة كصيغة JSON فقط.",
-            user=WHATSAPP_PROMPT + "\n\n---بداية المحادثة---\n" + chat_text,
-            task="analyze",
-            temperature=0.3,
-        )
-    except LLMError as e:
-        raise HTTPException(status_code=500, detail=f"تعذر تحليل المحادثة: {e}")
+    chat_text = _strip_and_limit("\n\n".join(p for p in combined_chat_parts if p.strip()))
+    if not chat_text.strip() and not all_media:
+        raise HTTPException(status_code=400, detail="الملفات فارغة")
 
-    raw = _parse_json(text)
-    if not raw:
-        raise HTTPException(status_code=422, detail="تعذر استخراج بيانات المحادثة (الملف قد يكون غير مفهوم)")
+    if chat_text.strip():
+        try:
+            text = await ask_text(
+                system="أنت خبير تحليل محادثات واتساب باللغة العربية وتستخرج البيانات بدقة كصيغة JSON فقط.",
+                user=WHATSAPP_PROMPT + "\n\n---بداية المحادثة---\n" + chat_text,
+                task="analyze",
+                temperature=0.3,
+            )
+        except LLMError as e:
+            raise HTTPException(status_code=500, detail=f"تعذر تحليل المحادثة: {e}")
+        raw = _parse_json(text)
+        if not raw:
+            raise HTTPException(status_code=422, detail="تعذر استخراج بيانات المحادثة (الملف قد يكون غير مفهوم)")
+        normalized = _normalize_analysis(raw)
+    else:
+        # زيب وسائط بس بدون نص — نرجّع تحليل فاضي والوسائط فقط، بدون استدعاء الذكاء الصناعي
+        normalized = _normalize_analysis({})
 
-    normalized = _normalize_analysis(raw)
+    normalized["media"] = all_media
 
     doc = {
-        "id": uuid.uuid4().hex,
+        "id": analysis_id,
         "user_id": user["user_id"],
-        "label": (label or normalized["client"].get("name") or file.filename or "محادثة").strip()[:120],
-        "file_name": file.filename,
+        "label": (label or normalized["client"].get("name") or first_filename or "محادثة").strip()[:120],
+        "file_name": ", ".join(f.filename for f in files),
         "analysis": normalized,
         "raw_preview": chat_text[:400],
         "applied": False,
@@ -245,6 +293,8 @@ async def apply_analysis(analysis_id: str, body: ApplyRequest, user=Depends(get_
                 updates["agreed_price"] = float(a.get("agreed_price"))
             if client_info.get("sub_category") and not (existing.get("sub_category") if existing else ""):
                 updates["sub_category"] = client_info["sub_category"]
+            if a.get("media"):
+                updates["attachments"] = (existing.get("attachments") if existing else []) + a["media"]
             if updates:
                 updates["updated_at"] = now_iso()
                 await db.clients.update_one({"id": client_id}, {"$set": updates})
@@ -263,6 +313,7 @@ async def apply_analysis(analysis_id: str, body: ApplyRequest, user=Depends(get_
                 "drive_link": "",
                 "source": client_info.get("source") or "واتساب",
                 "notes": (a.get("summary") or "")[:400],
+                "attachments": a.get("media") or [],
                 "contact_id": contact_id,
                 "portal_token": await new_portal_token(),
                 "logs": (
