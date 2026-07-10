@@ -88,6 +88,21 @@ const WIDGET_META: Record<WidgetKey, { label: string; icon: any }> = {
   events: { label: 'المواعيد القادمة', icon: 'calendar' },
 };
 
+// مجمع الإحصائيات القابلة للاختيار المدقق بالرئيسية (طلب: اختيار مدقق بالإحصائيات
+// والتحاليل) — كل واحدة مرتبطة بحقل من استجابة /dashboard.
+const STATS_META: Record<string, { title: string; icon: any; getValue: (d: any) => string; accent?: boolean; color?: string }> = {
+  month_income: { title: 'دخل هذا الشهر', icon: 'trending-up', getValue: (d) => fmt(d?.month_income || 0), accent: true },
+  month_expenses: { title: 'مصاريف الشهر', icon: 'trending-down', getValue: (d) => fmt(d?.month_expenses || 0), color: C.error },
+  net_profit: { title: 'صافي الربح', icon: 'wallet', getValue: (d) => fmt(d?.net_profit ?? (d?.month_income || 0) - (d?.month_expenses || 0)), color: C.success },
+  clients_in_progress: { title: 'مشاريع قيد التنفيذ', icon: 'hourglass', getValue: (d) => String(d?.clients_in_progress ?? 0), color: C.warning },
+  clients_delivered: { title: 'مشاريع مُسلّمة', icon: 'checkmark-circle', getValue: (d) => String(d?.clients_delivered ?? 0), color: C.success },
+  clients_total: { title: 'إجمالي العملاء', icon: 'people', getValue: (d) => String(d?.clients_total ?? 0), color: C.brand },
+  delivery_rate: { title: 'معدل التسليم', icon: 'speedometer', getValue: (d) => `${d?.delivery_rate ?? 0}٪`, color: C.brand },
+  tasks_overdue: { title: 'مهام متأخرة', icon: 'alert-circle', getValue: (d) => String(d?.tasks_overdue ?? 0), color: C.error },
+  tasks_completion_rate: { title: 'معدل إنجاز المهام', icon: 'checkbox', getValue: (d) => `${d?.tasks_completion_rate ?? 0}٪`, color: C.brand },
+  upcoming_events_count: { title: 'المواعيد القادمة', icon: 'calendar', getValue: (d) => String(d?.upcoming_events_count ?? 0), color: C.brand },
+};
+
 const PREFS_CACHE_KEY = 'azvio_dashboard_prefs_v2';
 
 function sanitizeOrder(order: any[]): WidgetKey[] {
@@ -216,6 +231,7 @@ export default function Dashboard() {
       setHomeHidden(layout?.hidden ?? []);
       setHomeSizes(layout?.sizes ?? {});
       setHomeCustom(layout?.custom ?? []);
+      setStatsSelected(layout?.stats_selected?.length ? layout.stats_selected : ['month_income', 'month_expenses', 'clients_in_progress', 'clients_delivered']);
     } catch {}
   }, []);
 
@@ -261,6 +277,7 @@ export default function Dashboard() {
   const [homeHidden, setHomeHidden] = useState<string[]>([]);
   const [homeSizes, setHomeSizes] = useState<Record<string, string>>({});
   const [homeCustom, setHomeCustom] = useState<{ id: string; title: string; icon: string; target: string }[]>([]);
+  const [statsSelected, setStatsSelected] = useState<string[]>(['month_income', 'month_expenses', 'clients_in_progress', 'clients_delivered']);
 
   // البطاقات المخصصة اللي يضيفها المستخدم بنفسه (رابط خارجي أو مسار داخل التطبيق)
   const customCards = homeCustom.map((c) => ({
@@ -371,32 +388,34 @@ export default function Dashboard() {
       >
         {widgetsOrder.filter((k) => widgetsVisible[k]).map((key) => {
           if (key === 'stats') {
+            if (!statsSelected.length) return null;
+            const pairs: string[][] = [];
+            for (let i = 0; i < statsSelected.length; i += 2) pairs.push(statsSelected.slice(i, i + 2));
             return (
               <React.Fragment key={key}>
-                <View style={styles.statsRow}>
-                  <View style={[styles.statCard, { backgroundColor: C.brand }]}>
-                    <Ionicons name="trending-up" size={20} color="rgba(255,255,255,0.85)" />
-                    <Text style={[styles.statValue, { color: '#FFF' }]}>{fmt(data?.month_income || 0)}</Text>
-                    <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.85)' }]}>دخل هذا الشهر</Text>
+                {pairs.map((pair, rowIdx) => (
+                  <View style={styles.statsRow} key={rowIdx}>
+                    {pair.map((statKey) => {
+                      const meta = STATS_META[statKey];
+                      if (!meta) return null;
+                      return (
+                        <View
+                          key={statKey}
+                          style={[
+                            styles.statCard,
+                            meta.accent && { backgroundColor: C.brand },
+                            pair.length === 1 && { flex: 1 },
+                          ]}
+                        >
+                          <View pointerEvents="none" style={[styles.statBracket, styles.statBracketTL, meta.accent && { borderColor: 'rgba(255,255,255,0.6)' }]} />
+                          <Ionicons name={meta.icon} size={20} color={meta.accent ? 'rgba(255,255,255,0.85)' : meta.color || C.onSurface} />
+                          <Text style={[styles.statValue, meta.accent && { color: '#FFF' }]}>{meta.getValue(data)}</Text>
+                          <Text style={[styles.statLabel, meta.accent && { color: 'rgba(255,255,255,0.85)' }]}>{meta.title}</Text>
+                        </View>
+                      );
+                    })}
                   </View>
-                  <View style={styles.statCard}>
-                    <Ionicons name="trending-down" size={20} color={C.error} />
-                    <Text style={styles.statValue}>{fmt(data?.month_expenses || 0)}</Text>
-                    <Text style={styles.statLabel}>مصاريف الشهر</Text>
-                  </View>
-                </View>
-                <View style={styles.statsRow}>
-                  <View style={styles.statCard}>
-                    <Ionicons name="hourglass" size={20} color={C.warning} />
-                    <Text style={styles.statValue}>{data?.clients_in_progress ?? 0}</Text>
-                    <Text style={styles.statLabel}>مشاريع قيد التنفيذ</Text>
-                  </View>
-                  <View style={styles.statCard}>
-                    <Ionicons name="checkmark-circle" size={20} color={C.success} />
-                    <Text style={styles.statValue}>{data?.clients_delivered ?? 0}</Text>
-                    <Text style={styles.statLabel}>مشاريع مُسلّمة</Text>
-                  </View>
-                </View>
+                ))}
               </React.Fragment>
             );
           }
@@ -504,8 +523,11 @@ export default function Dashboard() {
                       }}
                       testID={`nav-${c.href.replace(/[^a-zA-Z0-9]/g, '')}`}
                     >
+                      {/* زوايا فوكس — توقيع بصري مستوحى من إطار كاميرا الدرون، يظهر بهدوء بزوايا كل بطاقة */}
+                      <View pointerEvents="none" style={[styles.navBracket, styles.navBracketTL]} />
+                      <View pointerEvents="none" style={[styles.navBracket, styles.navBracketBR]} />
                       <View style={styles.navIcon}>
-                        <Ionicons name={c.icon} size={22} color={C.brand} />
+                        <Ionicons name={c.icon} size={22} color={C.brandDark} />
                       </View>
                       <Text style={styles.navTitle}>{c.title}</Text>
                       <Text style={styles.navSub}>{c.sub}</Text>
@@ -640,8 +662,11 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'flex-end',
     gap: 4,
+    overflow: 'hidden',
     ...shadow,
   },
+  statBracket: { position: 'absolute', width: 12, height: 12, borderColor: C.brand, opacity: 0.35 },
+  statBracketTL: { top: 6, left: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderTopLeftRadius: 4 },
   statValue: { fontFamily: F.bold, fontSize: 18, color: C.onSurface },
   statLabel: { fontFamily: F.regular, fontSize: 12, color: C.muted },
   sectionTitle: {
@@ -659,12 +684,16 @@ const styles = StyleSheet.create({
     borderRadius: R.lg,
     padding: 16,
     alignItems: 'flex-end',
+    overflow: 'hidden',
     ...shadow,
   },
+  navBracket: { position: 'absolute', width: 12, height: 12, borderColor: C.brand, opacity: 0.35 },
+  navBracketTL: { top: 6, left: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderTopLeftRadius: 4 },
+  navBracketBR: { bottom: 6, right: 6, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderBottomRightRadius: 4 },
   navIcon: {
     width: 42,
     height: 42,
-    borderRadius: 21,
+    borderRadius: 12,
     backgroundColor: C.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',

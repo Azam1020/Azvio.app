@@ -1051,9 +1051,12 @@ async def dashboard():
         "clients_total": len(clients),
         "clients_in_progress": sum(1 for c in clients if c.get("status") == "in_progress"),
         "clients_delivered": sum(1 for c in clients if c.get("status") == "delivered"),
+        "delivery_rate": round(sum(1 for c in clients if c.get("status") == "delivered") / len(clients) * 100, 1) if clients else 0,
         "month_income": month_income,
         "month_expenses": month_expenses,
+        "net_profit": month_income - month_expenses,
         "upcoming_events": events,
+        "upcoming_events_count": await db.events.count_documents({"date": {"$gte": today_str()}}),
         "content_stages": stages,
         "service_breakdown": service_breakdown,
         "tasks_total": tasks_total,
@@ -1233,6 +1236,7 @@ class HomeLayoutUpdate(BaseModel):
     hidden: list[str] = []  # مفاتيح الأزرار المخفية
     sizes: dict[str, str] = {}  # حجم كل بطاقة: small | medium | large (طلب: تحكم بحجم/شكل كل بطاقة)
     custom: list[dict] = []  # بطاقات مخصصة حرة {id, title, icon, target} يضيفها المستخدم بنفسه
+    stats_selected: list[str] = []  # اختيار مدقق لإحصائيات الرئيسية (طلب: اختيار مدقق بالإحصائيات والتحاليل)
 
 
 @router.get("/home/layout")
@@ -1245,6 +1249,7 @@ async def get_home_layout(user: dict = Depends(get_current_user)):
         "hidden": doc.get("home_hidden", []),
         "sizes": doc.get("home_sizes", {}),
         "custom": doc.get("home_custom", []),
+        "stats_selected": doc.get("home_stats_selected", []),
     }
 
 
@@ -1257,6 +1262,7 @@ async def update_home_layout(body: HomeLayoutUpdate, user: dict = Depends(get_cu
             "home_hidden": body.hidden,
             "home_sizes": body.sizes,
             "home_custom": body.custom,
+            "home_stats_selected": body.stats_selected,
             "updated_at": now_iso(),
         }},
         upsert=True,
