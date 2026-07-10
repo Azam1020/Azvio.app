@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { C, F, R } from './theme';
 
@@ -112,10 +112,22 @@ export function SignaturePad({ onSave, onCancel, height = 220 }: Props) {
 }
 
 /** Renders a previously-saved signature (the path-data string from onSave).
- * يدعم الصيغة الجديدة JSON {d, viewBox} — viewBox محسوب من حدود الرسم الفعلية
- * وقت التوقيع، فيعرض التوقيع كامل ومتناسب بأي مقاس صندوق عرض. وأيضاً يدعم الصيغة
- * القديمة (مسار خام بدون viewBox) للتوقيعات المحفوظة قبل هذا الإصلاح. */
+ * يدعم الصيغة الجديدة JSON {d, viewBox}، والصيغة القديمة (مسار خام)، وأيضاً
+ * صيغة أقدم من نظام سابق (صورة PNG/JPEG محفوظة كـ base64) — كل صيغة غير معروفة
+ * أو غير صالحة تُعرض كرسالة بدل ما تسبب كراش فعلي بمحلل RNSVGPath الأصلي
+ * (طلب: كراش عند فتح أي عميل عنده توقيع قديم). */
 export function SignatureView({ pathData, height = 100 }: { pathData: string; height?: number }) {
+  if (!pathData) return null;
+
+  // صيغة صورة (توقيعات قديمة جداً محفوظة كـ base64 PNG/JPEG) — تُعرض كصورة عادية
+  if (pathData.startsWith('data:image')) {
+    return (
+      <View style={[styles.viewBox, { height }]}>
+        <Image source={{ uri: pathData }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+      </View>
+    );
+  }
+
   let d = pathData;
   let viewBox: string | undefined;
   try {
@@ -125,7 +137,20 @@ export function SignatureView({ pathData, height = 100 }: { pathData: string; he
       viewBox = parsed.viewBox || undefined;
     }
   } catch {
-    // صيغة قديمة (مسار خام) — نعرضه كما هو بدون viewBox، بنفس السلوك السابق
+    // صيغة قديمة (مسار خام) — نكمّل ونتحقق منها بالأسفل بدل ما نفترض إنها صالحة
+  }
+
+  // تحقق صارم: مسار SVG صالح يبدأ بـ M/m ولا يحتوي إلا أرقام/حروف أوامر مسار معروفة —
+  // أي شي غير كذا (رابط صورة، نص عشوائي...) يوقف الرسم قبل ما يوصل لمكوّن Path
+  // الأصلي ويكراش التطبيق بالكامل.
+  const isValidPath = typeof d === 'string' && /^[Mm][\d\s.,\-MmLlZz]*$/.test(d.trim()) && d.trim().length > 0;
+
+  if (!isValidPath) {
+    return (
+      <View style={[styles.viewBox, { height, alignItems: 'center', justifyContent: 'center' }]}>
+        <Text style={{ fontFamily: F.regular, fontSize: 12, color: C.muted }}>تعذّر عرض هذا التوقيع (صيغة قديمة غير مدعومة)</Text>
+      </View>
+    );
   }
 
   return (
