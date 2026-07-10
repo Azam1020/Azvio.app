@@ -72,6 +72,7 @@ export default function TicketsScreen() {
         ) : (
           tickets.map((t) => (
             <View key={t.id} style={styles.card}>
+              <View pointerEvents="none" style={styles.cardBracket} />
               <View style={styles.rowTop}>
                 <View style={[styles.badge, t.kind === 'bug' ? styles.badgeBug : styles.badgeFeature]}>
                   <Text style={styles.badgeText}>{t.kind === 'bug' ? 'خطأ' : 'ميزة'}</Text>
@@ -102,7 +103,8 @@ const styles = StyleSheet.create({
   filterText: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2 },
   filterTextActive: { color: '#FFF' },
   wrap: { padding: 16, paddingBottom: 40 },
-  card: { backgroundColor: C.surface, borderRadius: R.lg, padding: 14, marginBottom: 10, ...shadow },
+  card: { backgroundColor: C.surface, borderRadius: R.lg, padding: 14, marginBottom: 10, overflow: 'hidden', ...shadow },
+  cardBracket: { position: 'absolute', top: 6, left: 6, width: 10, height: 10, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderColor: C.brand, opacity: 0.3, borderTopLeftRadius: 4 },
   rowTop: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: R.pill },
   badgeBug: { backgroundColor: '#FFE5E5' },
