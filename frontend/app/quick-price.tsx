@@ -61,6 +61,12 @@ export default function QuickPriceScreen() {
   const DURATION_OPTIONS = ['قصير', 'متوسط', 'طويل'];
   const EFFECTS_LEVELS = ['بسيط', 'متوسط', 'متقدم'];
 
+  const services = useMemo(() => serviceTypes.map((t) => t.key), [serviceTypes]);
+  const serviceLabel = useCallback(
+    (key: string | null) => serviceTypes.find((t) => t.key === key)?.label || key || '',
+    [serviceTypes]
+  );
+
   // نموذج مختلف لكل نوع خدمة — نكتشف طبيعة الخدمة من تسميتها (درون/تصوير VS
   // مونتاج) ونعرض بس الحقول اللي تخصها (طلب: كل خدمة لها نموذج خاص).
   const label = (serviceLabel(smartService) || '').trim();
@@ -139,11 +145,6 @@ export default function QuickPriceScreen() {
     }, [load])
   );
 
-  const services = useMemo(() => serviceTypes.map((t) => t.key), [serviceTypes]);
-  const serviceLabel = useCallback(
-    (key: string | null) => serviceTypes.find((t) => t.key === key)?.label || key || '',
-    [serviceTypes]
-  );
   const filteredItems = useMemo(
     () => (selectedService ? items.filter((i) => i.service_type === selectedService) : []),
     [items, selectedService]
