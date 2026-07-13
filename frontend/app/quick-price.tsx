@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -48,6 +48,7 @@ export default function QuickPriceScreen() {
   // والاختيارات والنوع والمدة)
   const [smartService, setSmartService] = useState<string | null>(null);
   const [smartSubCategory, setSmartSubCategory] = useState<string | null>(null);
+  const [smartCategories, setSmartCategories] = useState<{ id: string; name: string }[]>([]);
   const [smartOptions, setSmartOptions] = useState<Record<string, any>>({});
   const [smartAsking, setSmartAsking] = useState(false);
   const [smartResult, setSmartResult] = useState<{
@@ -105,10 +106,17 @@ export default function QuickPriceScreen() {
     setSmartOptions((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const smartSubCategories = useMemo(
-    () => (smartService ? Array.from(new Set(items.filter((i) => i.service_type === smartService && i.sub_category).map((i) => i.sub_category))) : []),
-    [items, smartService]
-  );
+  // نجيب الفئات الفرعية من نفس مصدرها الحقيقي (/categories) كل ما يتغيّر
+  // نوع الخدمة — مو استنتاج من تسعيرتي (طلب: الفئة الفرعية مصدرها خدماتي/التسعيرتي)
+  useEffect(() => {
+    if (!smartService) {
+      setSmartCategories([]);
+      return;
+    }
+    api(`/categories?service_type=${encodeURIComponent(smartService)}`)
+      .then((r) => setSmartCategories(r || []))
+      .catch(() => setSmartCategories([]));
+  }, [smartService]);
 
   const askSmart = async () => {
     if (!smartService) {
@@ -268,17 +276,23 @@ export default function QuickPriceScreen() {
           {services.length === 0 && <Text style={styles.emptyText}>ما فيه أنواع خدمة مضافة بعد — أضفها من شاشة "خدماتي" أول.</Text>}
         </View>
 
-        {smartService && smartSubCategories.length > 0 && (
+        {smartService && smartCategories.length === 0 && (
+          <Text style={[styles.emptyText, { marginBottom: 10 }]}>
+            ما فيه فئات فرعية محفوظة لـ"{serviceLabel(smartService)}" بعد — تقدر تضيفها من شاشة العميل أو تكمل بدونها.
+          </Text>
+        )}
+
+        {smartService && smartCategories.length > 0 && (
           <>
             <Text style={styles.miniLabel}>الفئة الفرعية</Text>
             <View style={styles.chipsRow}>
-              {smartSubCategories.map((sc) => (
+              {smartCategories.map((sc) => (
                 <TouchableOpacity
-                  key={sc}
-                  style={[styles.chip, smartSubCategory === sc && styles.chipActive]}
-                  onPress={() => setSmartSubCategory((p) => (p === sc ? null : sc))}
+                  key={sc.id}
+                  style={[styles.chip, smartSubCategory === sc.name && styles.chipActive]}
+                  onPress={() => setSmartSubCategory((p) => (p === sc.name ? null : sc.name))}
                 >
-                  <Text style={[styles.chipText, smartSubCategory === sc && styles.chipTextActive]}>{sc}</Text>
+                  <Text style={[styles.chipText, smartSubCategory === sc.name && styles.chipTextActive]}>{sc.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
