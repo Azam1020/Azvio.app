@@ -11,6 +11,7 @@ const ALL_CARDS = [
   { key: 'calendar', title: 'التقويم', icon: 'calendar' as const },
   { key: 'services', title: 'خدماتي', icon: 'briefcase' as const },
   { key: 'pricing', title: 'تسعيرتي', icon: 'pricetags' as const },
+  { key: 'quick_price', title: 'التسعير الذكي', icon: 'flash' as const },
   { key: 'invoices', title: 'الفواتير وعروض السعر', icon: 'document-text' as const },
   { key: 'portfolio', title: 'البورتفوليو', icon: 'images' as const },
   { key: 'whatsapp', title: 'تحليل واتساب', icon: 'logo-whatsapp' as const },

@@ -35,7 +35,7 @@ def role_label(role: str) -> str:
 # admin دائماً كل شي، بدون ذكره صراحة بكل قسم.
 
 ALL_SECTIONS = {
-    "content", "calendar", "services", "pricing", "invoices", "portfolio",
+    "content", "calendar", "services", "pricing", "quick_price", "invoices", "portfolio",
     "whatsapp", "insights", "google_accounts", "links", "settings",
     "team", "tickets", "finance", "clients",
 }
@@ -45,7 +45,7 @@ ALL_SECTIONS = {
 # لأنها بيانات حساسة تجارياً (أسعار، أرباح، عقود).
 SECTION_PERMISSIONS = {
     "project_manager": {
-        "content", "calendar", "services", "pricing", "invoices", "portfolio",
+        "content", "calendar", "services", "pricing", "quick_price", "invoices", "portfolio",
         "whatsapp", "insights", "google_accounts", "links", "settings",
         "tickets", "finance", "clients",
         # ماعدا "team" — إدارة المستخدمين تبقى لصاحب التطبيق فقط

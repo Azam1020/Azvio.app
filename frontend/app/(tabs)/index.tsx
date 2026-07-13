@@ -369,6 +369,7 @@ export default function Dashboard() {
     { key: 'calendar', title: 'التقويم', sub: 'مواعيد التصوير والتسليم', icon: 'calendar' as const, href: '/calendar' },
     { key: 'services', title: 'خدماتي', sub: 'درون ومونتاج', icon: 'briefcase' as const, href: '/services' },
     { key: 'pricing', title: 'تسعيرتي', sub: 'أسعارك مقابل السوق', icon: 'pricetags' as const, href: '/pricing' },
+    { key: 'quick_price', title: 'التسعير الذكي', sub: 'سعر فوري لكلام العميل', icon: 'flash' as const, href: '/quick-price' },
     { key: 'invoices', title: 'الفواتير وعروض السعر', sub: 'أنشئ فاتورة أو عرض سعر بضغطة', icon: 'document-text' as const, href: '/invoices' },
     { key: 'portfolio', title: 'البورتفوليو', sub: 'مشاريعك المُسلَّمة', icon: 'images' as const, href: '/portfolio' },
     { key: 'whatsapp', title: 'تحليل واتساب', sub: 'استخرج العملاء من المحادثات', icon: 'logo-whatsapp' as const, href: '/whatsapp' },

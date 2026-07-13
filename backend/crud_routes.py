@@ -8,6 +8,21 @@ from pydantic import BaseModel
 
 from auth import get_current_user
 from database import db, today_str, new_portal_token
+from llm_client import ask_text, LLMError
+import json
+import re
+
+
+def _parse_json_block(text: str) -> dict:
+    """يستخرج أول كتلة JSON من رد الذكاء الاصطناعي (نسخة محلية مستقلة لتفادي
+    استيراد دائري مع sanad.py، اللي أصلاً يستورد من هذا الملف)."""
+    m = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
+    if not m:
+        return {}
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return {}
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -800,6 +815,117 @@ async def update_my_pricing(price_id: str, body: MyPricingUpdate):
 async def delete_my_pricing(price_id: str):
     await db.my_pricing.delete_one({"id": price_id})
     return {"ok": True}
+
+
+class SmartPriceRequest(BaseModel):
+    service_type: str
+    options: dict = {}  # {"drone": true, "editing": true, "duration": "متوسط", "travel": false, "rush": false, "notes": "..."}
+
+
+@router.post("/pricing/smart")
+async def smart_price(body: SmartPriceRequest, user: dict = Depends(get_current_user)):
+    """تسعير ذكي تفاعلي — عزام يختار الخيارات (نوع، درون، مونتاج، مدة...) مع
+    سند، وسند يجمعها مع تسعيرته الحقيقية ويرجّع السعر + جملة مبرّرة جاهزة
+    يرسلها للعميل مباشرة لو استغرب السعر (طلب: سند معي أختار الأسئلة
+    والاختيارات، ونسخة سبب السعر جاهزة للإرسال)."""
+    pricing_list = await db.my_pricing.find(
+        {"service_type": body.service_type} if body.service_type else {}, {"_id": 0}
+    ).to_list(500)
+
+    catalog_lines = [
+        f"- {p.get('sub_category', '') or 'عام'} — {p.get('label', '')}: {p.get('price_from', 0)}-{p.get('price_to', 0)} ر.س"
+        + (f" (ملاحظة: {p['notes']})" if p.get("notes") else "")
+        for p in pricing_list
+    ] or ["ما فيه أسعار محفوظة بعد لهذا النوع — استخدم تقديرك السوقي المعقول للسعودية."]
+
+    options_lines = [f"{k}: {v}" for k, v in body.options.items() if v not in (None, "", False)]
+
+    system = (
+        "أنت سند، مساعد صاحب استوديو تصوير جوي ومونتاج (AZVIO) بالسعودية. المالك "
+        "اختار خيارات محددة لمشروع عميل، ومهمتك تحسب السعر المناسب بناءً على "
+        "تسعيرته الحقيقية المذكورة + الخيارات، وتكتب أيضاً رسالة قصيرة جاهزة "
+        "يرسلها المالك للعميل تشرح بأسلوب مهني ومقنع ليش السعر كذا (مفيدة خصوصاً "
+        "لو العميل استغرب السعر غالي أو رخيص). أعد JSON فقط."
+    )
+    user_msg = (
+        "تسعيرة النوع المطلوب:\n" + "\n".join(catalog_lines) +
+        "\n\nالخيارات اللي اختارها المالك لهذا المشروع:\n" + ("\n".join(options_lines) if options_lines else "بدون خيارات إضافية") +
+        "\n\nأعد JSON بالضبط: {\"suggested_price\": رقم, \"price_range\": \"من-إلى ر.س\" أو فاضي, "
+        "\"internal_reasoning\": \"جملة قصيرة توضح لعزام كيف وصلت للسعر\", "
+        "\"market_range\": \"تقديرك التقريبي (مو بيانات حية) لنطاق سعر السوق السعودي لنفس الخدمة والخيارات، بصيغة من-إلى ر.س\", "
+        "\"client_message\": \"رسالة جاهزة بصيغة مهذبة ومباشرة، بدون تحية أو ختام، تشرح للعميل مكوّنات السعر (مثلاً: يشمل كذا وكذا) بأسلوب مقنع، جملتين لثلاث بالكثير\"}"
+    )
+    try:
+        text = await ask_text(system=system, user=user_msg, task="chat", temperature=0.4)
+    except LLMError as e:
+        raise HTTPException(status_code=500, detail=f"تعذر التسعير الآن: {e}")
+
+    data = _parse_json_block(text) or {}
+    return {
+        "suggested_price": data.get("suggested_price"),
+        "price_range": data.get("price_range") or "",
+        "internal_reasoning": (data.get("internal_reasoning") or "").strip()[:300],
+        "market_range": (data.get("market_range") or "").strip()[:120],
+        "client_message": (data.get("client_message") or "").strip()[:500],
+    }
+
+
+class QuickPriceRequest(BaseModel):
+    text: str  # وش قاله العميل بالضبط (نص حر، من صوت أو كتابة)
+
+
+@router.post("/pricing/quick")
+async def quick_price(body: QuickPriceRequest, user: dict = Depends(get_current_user)):
+    """التسعير الذكي السريع — يقرأ كلام العميل كما هو ويطابقه مباشرة مع قائمة
+    "تسعيرتي" الحقيقية (مو معادلة عامة)، ويرجّع السعر فورًا بصوت سند
+    (طلب: قسم مخصص للتسعير الذكي، أدخل وأسمع كلام العميل ويعطيني السعر على طول)."""
+    if not body.text.strip():
+        raise HTTPException(status_code=400, detail="اكتب أو سجّل وش قاله العميل أول")
+
+    pricing_list = await db.my_pricing.find({}, {"_id": 0}).to_list(500)
+    if not pricing_list:
+        return {
+            "matched": False,
+            "message": "ما عندك تسعيرة محفوظة بعد بقائمة (تسعيرتي) — أضف أسعارك أول عشان أقدر أطابق كلام العميل معها.",
+            "suggested_price": None,
+        }
+
+    catalog_lines = [
+        f"- [{p['id']}] {p.get('service_type', '')} / {p.get('sub_category', '') or 'عام'} — {p.get('label', '')}: {p.get('price_from', 0)}-{p.get('price_to', 0)} ر.س"
+        + (f" (ملاحظة: {p['notes']})" if p.get("notes") else "")
+        for p in pricing_list
+    ]
+
+    system = (
+        "أنت سند، مساعد صاحب استوديو تصوير جوي ومونتاج (AZVIO) بالسعودية. عندك قائمة "
+        "تسعير حقيقية للمالك، ومهمتك تقرأ كلام عميل جديد وتطابقه مع أقرب بند بالقائمة "
+        "وترجع السعر المناسب فورًا. لو ما فيه تطابق واضح، اختر أقرب بند واذكر ليش، أو "
+        "قل صراحة إن العميل يحتاج تسعيرة يدوية. أعد JSON فقط."
+    )
+    user_msg = (
+        "قائمة تسعيرتي:\n" + "\n".join(catalog_lines) +
+        f"\n\nكلام العميل:\n\"{body.text.strip()}\"\n\n"
+        "أعد JSON بالضبط: {\"matched\": true|false, \"price_id\": \"معرّف البند المطابق أو فاضي\", "
+        "\"suggested_price\": رقم أو null, \"price_range\": \"من-إلى ر.س\" أو فاضي, "
+        "\"reasoning\": \"جملة أو جملتين تشرح ليش هذا السعر بصوت سند المباشر\"}"
+    )
+    try:
+        text = await ask_text(system=system, user=user_msg, task="chat", temperature=0.3)
+    except LLMError as e:
+        raise HTTPException(status_code=500, detail=f"تعذر التسعير الآن: {e}")
+
+    data = _parse_json_block(text) or {}
+    matched_item = next((p for p in pricing_list if p["id"] == data.get("price_id")), None)
+
+    return {
+        "matched": bool(data.get("matched")),
+        "suggested_price": data.get("suggested_price"),
+        "price_range": data.get("price_range") or (
+            f"{matched_item['price_from']:,.0f}-{matched_item['price_to']:,.0f} ر.س" if matched_item else ""
+        ),
+        "reasoning": (data.get("reasoning") or "").strip()[:400],
+        "matched_item": matched_item,
+    }
 
 
 @router.post("/my-pricing/analyze-file")
