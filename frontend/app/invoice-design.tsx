@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -49,7 +50,13 @@ export default function InvoiceDesignSettingsScreen() {
     show_terms: true,
     logo_position: 'right',
     content_align: 'right',
+    label_document_number: 'رقم المستند',
+    label_date: 'التاريخ',
+    label_client_name: 'إلى',
+    label_sub_category: 'الفئة',
+    label_notes: 'ملاحظات',
   });
+  const [customFields, setCustomFields] = useState<{ label: string; value: string }[]>([]);
   const [fontOptions, setFontOptions] = useState<{ key: string; label: string }[]>([
     { key: 'cairo', label: 'Cairo (افتراضي)' },
   ]);
@@ -81,7 +88,13 @@ export default function InvoiceDesignSettingsScreen() {
         show_terms: r.show_terms ?? true,
         logo_position: r.logo_position || 'right',
         content_align: r.content_align || 'right',
+        label_document_number: r.label_document_number || 'رقم المستند',
+        label_date: r.label_date || 'التاريخ',
+        label_client_name: r.label_client_name || 'إلى',
+        label_sub_category: r.label_sub_category || 'الفئة',
+        label_notes: r.label_notes || 'ملاحظات',
       });
+      setCustomFields(r.custom_fields?.length ? r.custom_fields : []);
       if (r.font_options?.length) setFontOptions(r.font_options);
     } catch {}
     setLoading(false);
@@ -211,6 +224,12 @@ export default function InvoiceDesignSettingsScreen() {
           show_terms: settings.show_terms,
           logo_position: settings.logo_position,
           content_align: settings.content_align,
+          label_document_number: settings.label_document_number,
+          label_date: settings.label_date,
+          label_client_name: settings.label_client_name,
+          label_sub_category: settings.label_sub_category,
+          label_notes: settings.label_notes,
+          custom_fields: customFields.filter((f) => f.label.trim() && f.value.trim()),
         }),
       });
       Alert.alert('تم الحفظ', '✅ صار هذا التصميم افتراضي لكل الفواتير الجديدة');
@@ -479,47 +498,83 @@ export default function InvoiceDesignSettingsScreen() {
             ))}
           </View>
 
-          <Text style={[styles.fieldLabel, { marginTop: 14 }]}>إظهار الحقول</Text>
-          <View style={styles.switchRow}>
+          <Text style={[styles.fieldLabel, { marginTop: 14 }]}>الحقول (عدّل النص أو أطفئ الحقل)</Text>
+
+          <View style={styles.editableFieldRow}>
             <Switch
               value={settings.show_document_number}
               onValueChange={(v) => setSettings((s) => ({ ...s, show_document_number: v }))}
               trackColor={{ true: C.brand, false: C.border }}
             />
-            <Text style={styles.switchLabel}>رقم المستند</Text>
+            <TextInput
+              style={styles.editableFieldInput}
+              value={settings.label_document_number}
+              onChangeText={(v) => setSettings((s) => ({ ...s, label_document_number: v }))}
+              placeholder="رقم المستند"
+              placeholderTextColor={C.muted}
+            />
           </View>
-          <View style={styles.switchRow}>
+
+          <View style={styles.editableFieldRow}>
             <Switch
               value={settings.show_date}
               onValueChange={(v) => setSettings((s) => ({ ...s, show_date: v }))}
               trackColor={{ true: C.brand, false: C.border }}
             />
-            <Text style={styles.switchLabel}>التاريخ</Text>
+            <TextInput
+              style={styles.editableFieldInput}
+              value={settings.label_date}
+              onChangeText={(v) => setSettings((s) => ({ ...s, label_date: v }))}
+              placeholder="التاريخ"
+              placeholderTextColor={C.muted}
+            />
           </View>
-          <View style={styles.switchRow}>
+
+          <View style={styles.editableFieldRow}>
             <Switch
               value={settings.show_client_name}
               onValueChange={(v) => setSettings((s) => ({ ...s, show_client_name: v }))}
               trackColor={{ true: C.brand, false: C.border }}
             />
-            <Text style={styles.switchLabel}>اسم العميل</Text>
+            <TextInput
+              style={styles.editableFieldInput}
+              value={settings.label_client_name}
+              onChangeText={(v) => setSettings((s) => ({ ...s, label_client_name: v }))}
+              placeholder="إلى"
+              placeholderTextColor={C.muted}
+            />
           </View>
-          <View style={styles.switchRow}>
+
+          <View style={styles.editableFieldRow}>
             <Switch
               value={settings.show_sub_category}
               onValueChange={(v) => setSettings((s) => ({ ...s, show_sub_category: v }))}
               trackColor={{ true: C.brand, false: C.border }}
             />
-            <Text style={styles.switchLabel}>الفئة الفرعية</Text>
+            <TextInput
+              style={styles.editableFieldInput}
+              value={settings.label_sub_category}
+              onChangeText={(v) => setSettings((s) => ({ ...s, label_sub_category: v }))}
+              placeholder="الفئة"
+              placeholderTextColor={C.muted}
+            />
           </View>
-          <View style={styles.switchRow}>
+
+          <View style={styles.editableFieldRow}>
             <Switch
               value={settings.show_notes}
               onValueChange={(v) => setSettings((s) => ({ ...s, show_notes: v }))}
               trackColor={{ true: C.brand, false: C.border }}
             />
-            <Text style={styles.switchLabel}>الملاحظات</Text>
+            <TextInput
+              style={styles.editableFieldInput}
+              value={settings.label_notes}
+              onChangeText={(v) => setSettings((s) => ({ ...s, label_notes: v }))}
+              placeholder="ملاحظات"
+              placeholderTextColor={C.muted}
+            />
           </View>
+
           <View style={styles.switchRow}>
             <Switch
               value={settings.show_terms}
@@ -536,6 +591,38 @@ export default function InvoiceDesignSettingsScreen() {
             />
             <Text style={styles.switchLabel}>نص التذييل (اللي كتبته فوق)</Text>
           </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>حقول إضافية حرة (أضف أي معلومة ثانية)</Text>
+          {customFields.map((f, idx) => (
+            <View key={idx} style={styles.customFieldRow}>
+              <TouchableOpacity onPress={() => setCustomFields((prev) => prev.filter((_, i) => i !== idx))} hitSlop={8}>
+                <Ionicons name="close-circle" size={20} color={C.error} />
+              </TouchableOpacity>
+              <TextInput
+                style={[styles.editableFieldInput, { flex: 1 }]}
+                value={f.value}
+                onChangeText={(v) => setCustomFields((prev) => prev.map((x, i) => (i === idx ? { ...x, value: v } : x)))}
+                placeholder="القيمة"
+                placeholderTextColor={C.muted}
+              />
+              <TextInput
+                style={[styles.editableFieldInput, { width: 110 }]}
+                value={f.label}
+                onChangeText={(v) => setCustomFields((prev) => prev.map((x, i) => (i === idx ? { ...x, label: v } : x)))}
+                placeholder="اسم الحقل"
+                placeholderTextColor={C.muted}
+              />
+            </View>
+          ))}
+          <TouchableOpacity
+            style={styles.addFieldBtn}
+            onPress={() => setCustomFields((prev) => [...prev, { label: '', value: '' }])}
+          >
+            <Ionicons name="add-circle-outline" size={18} color={C.brand} />
+            <Text style={styles.addFieldText}>إضافة حقل جديد</Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={styles.saveBtn} onPress={save} disabled={saving}>
@@ -595,6 +682,21 @@ const makeStyles = (C: any) => StyleSheet.create({
   chipsLabel: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, textAlign: 'right', marginBottom: 6, marginTop: 4 },
   switchRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginTop: 14 },
   switchLabel: { fontFamily: F.regular, fontSize: 13, color: C.onSurface },
+  editableFieldRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 12 },
+  editableFieldInput: {
+    flex: 1,
+    backgroundColor: C.surface2,
+    borderRadius: R.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontFamily: F.regular,
+    fontSize: 13,
+    color: C.onSurface,
+    textAlign: 'right',
+  },
+  customFieldRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 10 },
+  addFieldBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: 10 },
+  addFieldText: { fontFamily: F.semibold, fontSize: 13, color: C.brand },
   saveBtn: { backgroundColor: C.brand, borderRadius: R.lg, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
   saveBtnText: { fontFamily: F.bold, fontSize: 14, color: '#FFF' },
 });

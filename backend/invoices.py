@@ -329,10 +329,12 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
     y -= 22
     c.setFont(F_REG, 11)
     if settings.get("show_document_number", True):
-        draw_head(head_x, y, rtl(f"رقم المستند: {doc['display_number']}"))
+        lbl = settings.get("label_document_number", "رقم المستند")
+        draw_head(head_x, y, rtl(f"{lbl}: {doc['display_number']}"))
         y -= 16
     if settings.get("show_date", True):
-        draw_head(head_x, y, rtl(f"التاريخ: {doc['created_at'][:10]}"))
+        lbl = settings.get("label_date", "التاريخ")
+        draw_head(head_x, y, rtl(f"{lbl}: {doc['created_at'][:10]}"))
         y -= 16
     tax_number = settings.get("tax_number", "")
     if settings.get("show_tax_number", False) and tax_number:
@@ -342,13 +344,26 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
 
     if settings.get("show_client_name", True):
         c.setFont(F_BOLD, 13)
-        draw_head(head_x, y, rtl(f"إلى: {doc['client_name']}"))
+        lbl = settings.get("label_client_name", "إلى")
+        draw_head(head_x, y, rtl(f"{lbl}: {doc['client_name']}"))
         y -= 20
     if doc.get("show_sub_category", True) and doc.get("sub_category"):
         c.setFont(F_REG, 10)
-        draw_head(head_x, y, rtl(f"الفئة: {doc['sub_category']}"))
+        lbl = settings.get("label_sub_category", "الفئة")
+        draw_head(head_x, y, rtl(f"{lbl}: {doc['sub_category']}"))
         y -= 20
     y -= 10
+
+    # حقول إضافية حرة يضيفها المستخدم بنفسه (طلب: أضيف حقول جديدة بعد)
+    custom_fields = settings.get("custom_fields", [])
+    if custom_fields:
+        c.setFont(F_REG, 10)
+        for cf in custom_fields:
+            lbl, val = (cf.get("label") or "").strip(), (cf.get("value") or "").strip()
+            if lbl and val:
+                draw_head(head_x, y, rtl(f"{lbl}: {val}"))
+                y -= 16
+        y -= 8
 
     # Table header
     c.setFillColor(accent)
@@ -388,7 +403,7 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
 
     if doc.get("show_notes", True) and doc.get("notes"):
         c.setFont(F_REG, 10)
-        c.drawRightString(right, y, rtl("ملاحظات: " + doc["notes"]))
+        c.drawRightString(right, y, rtl(settings.get("label_notes", "ملاحظات") + ": " + doc["notes"]))
         y -= 20
 
     terms_text = settings.get("terms_text", "")
@@ -658,6 +673,14 @@ class InvoiceDesignSettings(BaseModel):
     show_terms: bool = True
     logo_position: str = "right"  # right | left — طلب: التحكم بمكان الشعار
     content_align: str = "right"  # right | center | left — محاذاة النص الرئيسي
+    # تسميات قابلة للتعديل الكامل (طلب: أقدر أكتب النص اللي أبيه مو بس أظهره/أخفيه)
+    label_document_number: str = "رقم المستند"
+    label_date: str = "التاريخ"
+    label_client_name: str = "إلى"
+    label_sub_category: str = "الفئة"
+    label_notes: str = "ملاحظات"
+    # حقول نصية إضافية حرة يضيفها المستخدم بنفسه (طلب: أضيف حقول جديدة بعد)
+    custom_fields: list[dict] = []  # [{"label": "...", "value": "..."}]
 
 
 @router.get("/invoices/design-settings")
@@ -689,6 +712,12 @@ async def get_design_settings():
         "show_terms": doc.get("show_terms", True),
         "logo_position": doc.get("logo_position", "right"),
         "content_align": doc.get("content_align", "right"),
+        "label_document_number": doc.get("label_document_number", "رقم المستند"),
+        "label_date": doc.get("label_date", "التاريخ"),
+        "label_client_name": doc.get("label_client_name", "إلى"),
+        "label_sub_category": doc.get("label_sub_category", "الفئة"),
+        "label_notes": doc.get("label_notes", "ملاحظات"),
+        "custom_fields": doc.get("custom_fields", []),
         "font_options": [{"key": k, "label": v["label"]} for k, v in FONT_CHOICES.items()],
     }
 
@@ -718,6 +747,12 @@ async def update_design_settings(body: InvoiceDesignSettings):
             "show_terms": body.show_terms,
             "logo_position": body.logo_position if body.logo_position in ("right", "left") else "right",
             "content_align": body.content_align if body.content_align in ("right", "center", "left") else "right",
+            "label_document_number": body.label_document_number,
+            "label_date": body.label_date,
+            "label_client_name": body.label_client_name,
+            "label_sub_category": body.label_sub_category,
+            "label_notes": body.label_notes,
+            "custom_fields": body.custom_fields,
             "updated_at": datetime.now().isoformat(),
         }},
         upsert=True,
