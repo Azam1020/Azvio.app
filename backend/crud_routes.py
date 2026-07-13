@@ -819,6 +819,7 @@ async def delete_my_pricing(price_id: str):
 
 class SmartPriceRequest(BaseModel):
     service_type: str
+    sub_category: str = ""  # الفئة الفرعية (عقاري/مناسبات/...) — طلب: تظهر وتُستخدم بالحساب
     options: dict = {}  # {"drone": true, "editing": true, "duration": "متوسط", "travel": false, "rush": false, "notes": "..."}
 
 
@@ -828,9 +829,13 @@ async def smart_price(body: SmartPriceRequest, user: dict = Depends(get_current_
     سند، وسند يجمعها مع تسعيرته الحقيقية ويرجّع السعر + جملة مبرّرة جاهزة
     يرسلها للعميل مباشرة لو استغرب السعر (طلب: سند معي أختار الأسئلة
     والاختيارات، ونسخة سبب السعر جاهزة للإرسال)."""
-    pricing_list = await db.my_pricing.find(
-        {"service_type": body.service_type} if body.service_type else {}, {"_id": 0}
-    ).to_list(500)
+    q: dict = {"service_type": body.service_type} if body.service_type else {}
+    if body.sub_category:
+        q["sub_category"] = body.sub_category
+    pricing_list = await db.my_pricing.find(q, {"_id": 0}).to_list(500)
+    # لو ما فيه تطابق دقيق بالفئة الفرعية، نرجع لكل أسعار نفس نوع الخدمة (احتياطي)
+    if not pricing_list and body.sub_category and body.service_type:
+        pricing_list = await db.my_pricing.find({"service_type": body.service_type}, {"_id": 0}).to_list(500)
 
     catalog_lines = [
         f"- {p.get('sub_category', '') or 'عام'} — {p.get('label', '')}: {p.get('price_from', 0)}-{p.get('price_to', 0)} ر.س"
@@ -848,6 +853,8 @@ async def smart_price(body: SmartPriceRequest, user: dict = Depends(get_current_
         "لو العميل استغرب السعر غالي أو رخيص). أعد JSON فقط."
     )
     user_msg = (
+        f"نوع الخدمة: {body.service_type}\n"
+        f"الفئة الفرعية: {body.sub_category or 'غير محددة'}\n\n"
         "تسعيرة النوع المطلوب:\n" + "\n".join(catalog_lines) +
         "\n\nالخيارات اللي اختارها المالك لهذا المشروع:\n" + ("\n".join(options_lines) if options_lines else "بدون خيارات إضافية") +
         "\n\nأعد JSON بالضبط: {\"suggested_price\": رقم, \"price_range\": \"من-إلى ر.س\" أو فاضي, "

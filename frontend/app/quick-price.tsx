@@ -50,6 +50,7 @@ export default function QuickPriceScreen() {
   // "سند معي" — خيارات تفاعلية بدل النص الحر بس (طلب: أختار مع سند الأسئلة
   // والاختيارات والنوع والمدة)
   const [smartService, setSmartService] = useState<string | null>(null);
+  const [smartSubCategory, setSmartSubCategory] = useState<string | null>(null);
   const [smartOptions, setSmartOptions] = useState<Record<string, any>>({});
   const [smartAsking, setSmartAsking] = useState(false);
   const [smartResult, setSmartResult] = useState<{
@@ -72,6 +73,11 @@ export default function QuickPriceScreen() {
     setSmartOptions((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const smartSubCategories = useMemo(
+    () => (smartService ? Array.from(new Set(items.filter((i) => i.service_type === smartService && i.sub_category).map((i) => i.sub_category))) : []),
+    [items, smartService]
+  );
+
   const askSmart = async () => {
     if (!smartService) {
       Alert.alert('اختر النوع أول', 'حدد نوع الخدمة قبل ما تكمل مع سند');
@@ -82,7 +88,7 @@ export default function QuickPriceScreen() {
     try {
       const r = await api('/pricing/smart', {
         method: 'POST',
-        body: JSON.stringify({ service_type: smartService, options: smartOptions }),
+        body: JSON.stringify({ service_type: smartService, sub_category: smartSubCategory || '', options: smartOptions }),
       });
       setSmartResult(r);
     } catch (e: any) {
@@ -220,7 +226,10 @@ export default function QuickPriceScreen() {
                 <TouchableOpacity
                   key={s}
                   style={[styles.chip, smartService === s && styles.chipActive]}
-                  onPress={() => setSmartService(s)}
+                  onPress={() => {
+                    setSmartService(s);
+                    setSmartSubCategory(null);
+                  }}
                 >
                   <Text style={[styles.chipText, smartService === s && styles.chipTextActive]}>{SERVICE_LABELS[s] || s}</Text>
                 </TouchableOpacity>
@@ -229,12 +238,32 @@ export default function QuickPriceScreen() {
                 <TouchableOpacity
                   key={s}
                   style={[styles.chip, smartService === s && styles.chipActive]}
-                  onPress={() => setSmartService(s)}
+                  onPress={() => {
+                    setSmartService(s);
+                    setSmartSubCategory(null);
+                  }}
                 >
                   <Text style={[styles.chipText, smartService === s && styles.chipTextActive]}>{SERVICE_LABELS[s]}</Text>
                 </TouchableOpacity>
               ))}
         </View>
+
+        {smartService && smartSubCategories.length > 0 && (
+          <>
+            <Text style={styles.miniLabel}>الفئة الفرعية</Text>
+            <View style={styles.chipsRow}>
+              {smartSubCategories.map((sc) => (
+                <TouchableOpacity
+                  key={sc}
+                  style={[styles.chip, smartSubCategory === sc && styles.chipActive]}
+                  onPress={() => setSmartSubCategory((p) => (p === sc ? null : sc))}
+                >
+                  <Text style={[styles.chipText, smartSubCategory === sc && styles.chipTextActive]}>{sc}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
 
         {smartService && (
           <>
@@ -264,6 +293,25 @@ export default function QuickPriceScreen() {
               ))}
             </View>
 
+            <Text style={styles.miniLabel}>أي تفاصيل ثانية؟ (اختياري)</Text>
+            <TextInput
+              style={[styles.textBox, { minHeight: 60, marginBottom: 12 }]}
+              placeholder="مثال: العميل يبي تسليم Raw كمان، أو الموقع بعيد شوي..."
+              placeholderTextColor={C.muted}
+              value={smartOptions.notes || ''}
+              onChangeText={(v) => setSmartOptions((p) => ({ ...p, notes: v }))}
+              multiline
+              textAlignVertical="top"
+            />
+
+            <View style={styles.summaryBox}>
+              <Text style={styles.summaryText}>
+                النوع: <Text style={styles.summaryStrong}>{SERVICE_LABELS[smartService] || smartService}</Text>
+                {smartSubCategory ? <>{'  ·  '}الفئة: <Text style={styles.summaryStrong}>{smartSubCategory}</Text></> : null}
+                {smartOptions.duration ? <>{'  ·  '}المدة: <Text style={styles.summaryStrong}>{smartOptions.duration}</Text></> : null}
+              </Text>
+            </View>
+
             <TouchableOpacity style={styles.askBtn} onPress={askSmart} disabled={smartAsking}>
               {smartAsking ? (
                 <ActivityIndicator color="#FFF" />
@@ -277,7 +325,10 @@ export default function QuickPriceScreen() {
 
             {smartResult && (
               <BracketCard style={styles.resultCard} accent>
-                <Text style={styles.resultLabel}>السعر المقترح</Text>
+                <Text style={styles.resultLabel}>
+                  {SERVICE_LABELS[smartService] || smartService}
+                  {smartSubCategory ? ` — ${smartSubCategory}` : ''}
+                </Text>
                 <Text style={styles.resultPrice}>
                   {smartResult.suggested_price ? `${smartResult.suggested_price.toLocaleString('en-US')} ر.س` : smartResult.price_range || '—'}
                 </Text>
@@ -374,6 +425,9 @@ const styles = StyleSheet.create({
   emptyCard: { padding: 20, alignItems: 'center', gap: 8 },
   emptyText: { fontFamily: F.regular, fontSize: 12.5, color: C.muted, textAlign: 'center', lineHeight: 20 },
   miniLabel: { fontFamily: F.semibold, fontSize: 12, color: C.muted, textAlign: 'right', marginBottom: 6, marginTop: 2 },
+  summaryBox: { backgroundColor: C.brandSoft, borderRadius: R.md, padding: 10, marginBottom: 12 },
+  summaryText: { fontFamily: F.regular, fontSize: 12, color: C.brandDark, textAlign: 'right' },
+  summaryStrong: { fontFamily: F.bold, fontSize: 12, color: C.brandDark },
   clientMsgBox: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: R.md, padding: 12, marginTop: 14 },
   clientMsgLabel: { fontFamily: F.semibold, fontSize: 11, color: 'rgba(255,255,255,0.85)', textAlign: 'right', marginBottom: 6 },
   clientMsgText: { fontFamily: F.regular, fontSize: 13, color: '#FFF', textAlign: 'right', lineHeight: 20 },
