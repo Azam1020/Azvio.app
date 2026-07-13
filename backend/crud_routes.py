@@ -837,6 +837,10 @@ async def smart_price(body: SmartPriceRequest, user: dict = Depends(get_current_
     if not pricing_list and body.sub_category and body.service_type:
         pricing_list = await db.my_pricing.find({"service_type": body.service_type}, {"_id": 0}).to_list(500)
 
+    # الاسم الحقيقي لنوع الخدمة (مو الكود الداخلي) — طلب: ربط بنفس أنواع خدماتي الحقيقية
+    service_type_doc = await db.service_types.find_one({"key": body.service_type}, {"_id": 0, "label": 1})
+    service_type_label = service_type_doc["label"] if service_type_doc else body.service_type
+
     catalog_lines = [
         f"- {p.get('sub_category', '') or 'عام'} — {p.get('label', '')}: {p.get('price_from', 0)}-{p.get('price_to', 0)} ر.س"
         + (f" (ملاحظة: {p['notes']})" if p.get("notes") else "")
@@ -847,13 +851,17 @@ async def smart_price(body: SmartPriceRequest, user: dict = Depends(get_current_
 
     system = (
         "أنت سند، مساعد صاحب استوديو تصوير جوي ومونتاج (AZVIO) بالسعودية. المالك "
-        "اختار خيارات محددة لمشروع عميل، ومهمتك تحسب السعر المناسب بناءً على "
-        "تسعيرته الحقيقية المذكورة + الخيارات، وتكتب أيضاً رسالة قصيرة جاهزة "
-        "يرسلها المالك للعميل تشرح بأسلوب مهني ومقنع ليش السعر كذا (مفيدة خصوصاً "
-        "لو العميل استغرب السعر غالي أو رخيص). أعد JSON فقط."
+        "اختار خيارات محددة لمشروع عميل، ومهمتك تحسب السعر النهائي بدقة بناءً على "
+        "تسعيرته الحقيقية المذكورة + كل الخيارات والأرقام اللي أدخلها. القيم الرقمية "
+        "زي (تكلفة المعدات، رسوم لوجستية، رسوم إدارية) هي تكاليف مباشرة بالريال "
+        "تُضاف على السعر الأساسي. (عدد أفراد الطاقم) و(أيام التصوير) و(ساعات العمل) "
+        "تؤثر على السعر الأساسي حسب منطق عملي معقول لصناعة التصوير. اجمع كل هذي "
+        "العوامل بمنطق واضح واذكر خلاصتها بالتفسير الداخلي. اكتب أيضاً رسالة قصيرة "
+        "جاهزة يرسلها المالك للعميل تشرح بأسلوب مهني ومقنع مكوّنات السعر (مفيدة "
+        "خصوصاً لو العميل استغرب السعر غالي أو رخيص). أعد JSON فقط."
     )
     user_msg = (
-        f"نوع الخدمة: {body.service_type}\n"
+        f"نوع الخدمة: {service_type_label}\n"
         f"الفئة الفرعية: {body.sub_category or 'غير محددة'}\n\n"
         "تسعيرة النوع المطلوب:\n" + "\n".join(catalog_lines) +
         "\n\nالخيارات اللي اختارها المالك لهذا المشروع:\n" + ("\n".join(options_lines) if options_lines else "بدون خيارات إضافية") +

@@ -26,15 +26,12 @@ type PricingItem = {
   notes: string;
 };
 
-const SERVICE_LABELS: Record<string, string> = {
-  drone: 'تصوير جوي',
-  editing: 'مونتاج',
-  both: 'جوي + مونتاج',
-};
+type ServiceTypeItem = { id: string; key: string; label: string };
 
 export default function QuickPriceScreen() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<PricingItem[]>([]);
+  const [serviceTypes, setServiceTypes] = useState<ServiceTypeItem[]>([]);
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<PricingItem | null>(null);
 
@@ -62,11 +59,40 @@ export default function QuickPriceScreen() {
   } | null>(null);
 
   const DURATION_OPTIONS = ['قصير', 'متوسط', 'طويل'];
+  const EFFECTS_LEVELS = ['بسيط', 'متوسط', 'متقدم'];
+
+  // نموذج مختلف لكل نوع خدمة — نكتشف طبيعة الخدمة من تسميتها (درون/تصوير VS
+  // مونتاج) ونعرض بس الحقول اللي تخصها (طلب: كل خدمة لها نموذج خاص).
+  const label = (serviceLabel(smartService) || '').trim();
+  const looksLikeShooting = /درون|جوي|أرضي|تصوير|فيديو خام|طائرة/.test(label);
+  const looksLikeEditing = /مونتاج|تحرير|إنتاج|مؤثرات/.test(label);
+  // خدمة مركّبة (تشمل الاثنين) أو تسمية غير واضحة → نعرض كل الحقول احتياطًا
+  const showShootingFields = looksLikeShooting || (!looksLikeShooting && !looksLikeEditing);
+  const showEditingFields = looksLikeEditing || (!looksLikeShooting && !looksLikeEditing);
+
   const MODIFIER_OPTIONS: { key: string; label: string }[] = [
-    { key: 'drone', label: 'يشمل درون' },
-    { key: 'editing', label: 'يشمل مونتاج' },
-    { key: 'travel', label: 'سفر خارج المدينة' },
+    ...(showShootingFields ? [{ key: 'drone', label: 'يشمل درون' }] : []),
+    ...(showEditingFields ? [{ key: 'editing', label: 'يشمل مونتاج' }] : []),
+    ...(showShootingFields ? [{ key: 'travel', label: 'سفر خارج المدينة' }] : []),
     { key: 'rush', label: 'تسليم مستعجل' },
+  ];
+  // حقول تفصيلية رقمية — مقسّمة حسب طبيعة الخدمة (طلب: أختار كل شي والنظام
+  // يعطيني بس الي يخص خدمتي)
+  const SHOOTING_NUMERIC_FIELDS: { key: string; label: string }[] = [
+    { key: 'equipment_cost', label: 'تكلفة المعدات/الأغراض (ر.س)' },
+    { key: 'logistics_cost', label: 'رسوم لوجستية — تنقل/شحن (ر.س)' },
+    { key: 'admin_fees', label: 'رسوم إدارية/تصاريح (ر.س)' },
+    { key: 'crew_count', label: 'عدد أفراد الطاقم' },
+    { key: 'work_hours', label: 'ساعات العمل الفعلية' },
+    { key: 'shooting_days', label: 'أيام التصوير' },
+  ];
+  const EDITING_NUMERIC_FIELDS: { key: string; label: string }[] = [
+    { key: 'editing_minutes', label: 'دقائق المونتاج' },
+    { key: 'free_revisions', label: 'جولات التعديل المجانية المشمولة' },
+  ];
+  const NUMERIC_FIELDS: { key: string; label: string }[] = [
+    ...(showShootingFields ? SHOOTING_NUMERIC_FIELDS : []),
+    ...(showEditingFields ? EDITING_NUMERIC_FIELDS : []),
   ];
 
   const toggleSmartOption = (key: string) => {
@@ -100,8 +126,9 @@ export default function QuickPriceScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await api('/my-pricing');
-      setItems(r || []);
+      const [pricingRes, typesRes] = await Promise.all([api('/my-pricing'), api('/service-types')]);
+      setItems(pricingRes || []);
+      setServiceTypes(typesRes || []);
     } catch {}
     setLoading(false);
   }, []);
@@ -112,7 +139,11 @@ export default function QuickPriceScreen() {
     }, [load])
   );
 
-  const services = useMemo(() => Array.from(new Set(items.map((i) => i.service_type))), [items]);
+  const services = useMemo(() => serviceTypes.map((t) => t.key), [serviceTypes]);
+  const serviceLabel = useCallback(
+    (key: string | null) => serviceTypes.find((t) => t.key === key)?.label || key || '',
+    [serviceTypes]
+  );
   const filteredItems = useMemo(
     () => (selectedService ? items.filter((i) => i.service_type === selectedService) : []),
     [items, selectedService]
@@ -170,7 +201,7 @@ export default function QuickPriceScreen() {
                   style={[styles.chip, selectedService === s && styles.chipActive]}
                   onPress={() => selectService(s)}
                 >
-                  <Text style={[styles.chipText, selectedService === s && styles.chipTextActive]}>{SERVICE_LABELS[s] || s}</Text>
+                  <Text style={[styles.chipText, selectedService === s && styles.chipTextActive]}>{serviceLabel(s)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -221,31 +252,19 @@ export default function QuickPriceScreen() {
         {/* الطريقة الثانية — "سند معي": نختار الأسئلة والاختيارات سوا */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>٢) سند معي — أختار الخيارات ويحسب لي</Text>
         <View style={styles.chipsRow}>
-          {services.length > 0
-            ? services.map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.chip, smartService === s && styles.chipActive]}
-                  onPress={() => {
-                    setSmartService(s);
-                    setSmartSubCategory(null);
-                  }}
-                >
-                  <Text style={[styles.chipText, smartService === s && styles.chipTextActive]}>{SERVICE_LABELS[s] || s}</Text>
-                </TouchableOpacity>
-              ))
-            : Object.keys(SERVICE_LABELS).map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.chip, smartService === s && styles.chipActive]}
-                  onPress={() => {
-                    setSmartService(s);
-                    setSmartSubCategory(null);
-                  }}
-                >
-                  <Text style={[styles.chipText, smartService === s && styles.chipTextActive]}>{SERVICE_LABELS[s]}</Text>
-                </TouchableOpacity>
-              ))}
+          {services.map((s) => (
+            <TouchableOpacity
+              key={s}
+              style={[styles.chip, smartService === s && styles.chipActive]}
+              onPress={() => {
+                setSmartService(s);
+                setSmartSubCategory(null);
+              }}
+            >
+              <Text style={[styles.chipText, smartService === s && styles.chipTextActive]}>{serviceLabel(s)}</Text>
+            </TouchableOpacity>
+          ))}
+          {services.length === 0 && <Text style={styles.emptyText}>ما فيه أنواع خدمة مضافة بعد — أضفها من شاشة "خدماتي" أول.</Text>}
         </View>
 
         {smartService && smartSubCategories.length > 0 && (
@@ -293,6 +312,40 @@ export default function QuickPriceScreen() {
               ))}
             </View>
 
+            {showEditingFields && (
+              <>
+                <Text style={styles.miniLabel}>مستوى المؤثرات</Text>
+                <View style={styles.chipsRow}>
+                  {EFFECTS_LEVELS.map((lv) => (
+                    <TouchableOpacity
+                      key={lv}
+                      style={[styles.chip, smartOptions.effects_level === lv && styles.chipActive]}
+                      onPress={() => setSmartOptions((p) => ({ ...p, effects_level: p.effects_level === lv ? undefined : lv }))}
+                    >
+                      <Text style={[styles.chipText, smartOptions.effects_level === lv && styles.chipTextActive]}>{lv}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            <Text style={styles.miniLabel}>تفاصيل رقمية (اختياري — أدخل الي يخصك بس)</Text>
+            <View style={styles.numericGrid}>
+              {NUMERIC_FIELDS.map((f) => (
+                <View key={f.key} style={styles.numericField}>
+                  <Text style={styles.numericLabel}>{f.label}</Text>
+                  <TextInput
+                    style={styles.numericInput}
+                    placeholder="0"
+                    placeholderTextColor={C.muted}
+                    keyboardType="numeric"
+                    value={smartOptions[f.key] != null ? String(smartOptions[f.key]) : ''}
+                    onChangeText={(v) => setSmartOptions((p) => ({ ...p, [f.key]: v.replace(/[^0-9.]/g, '') }))}
+                  />
+                </View>
+              ))}
+            </View>
+
             <Text style={styles.miniLabel}>أي تفاصيل ثانية؟ (اختياري)</Text>
             <TextInput
               style={[styles.textBox, { minHeight: 60, marginBottom: 12 }]}
@@ -306,7 +359,7 @@ export default function QuickPriceScreen() {
 
             <View style={styles.summaryBox}>
               <Text style={styles.summaryText}>
-                النوع: <Text style={styles.summaryStrong}>{SERVICE_LABELS[smartService] || smartService}</Text>
+                النوع: <Text style={styles.summaryStrong}>{serviceLabel(smartService)}</Text>
                 {smartSubCategory ? <>{'  ·  '}الفئة: <Text style={styles.summaryStrong}>{smartSubCategory}</Text></> : null}
                 {smartOptions.duration ? <>{'  ·  '}المدة: <Text style={styles.summaryStrong}>{smartOptions.duration}</Text></> : null}
               </Text>
@@ -326,7 +379,7 @@ export default function QuickPriceScreen() {
             {smartResult && (
               <BracketCard style={styles.resultCard} accent>
                 <Text style={styles.resultLabel}>
-                  {SERVICE_LABELS[smartService] || smartService}
+                  {serviceLabel(smartService)}
                   {smartSubCategory ? ` — ${smartSubCategory}` : ''}
                 </Text>
                 <Text style={styles.resultPrice}>
@@ -428,6 +481,21 @@ const styles = StyleSheet.create({
   summaryBox: { backgroundColor: C.brandSoft, borderRadius: R.md, padding: 10, marginBottom: 12 },
   summaryText: { fontFamily: F.regular, fontSize: 12, color: C.brandDark, textAlign: 'right' },
   summaryStrong: { fontFamily: F.bold, fontSize: 12, color: C.brandDark },
+  numericGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  numericField: { width: '47%' },
+  numericLabel: { fontFamily: F.regular, fontSize: 11, color: C.muted, textAlign: 'right', marginBottom: 4 },
+  numericInput: {
+    backgroundColor: C.surface,
+    borderRadius: R.sm,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontFamily: F.regular,
+    fontSize: 13,
+    color: C.onSurface,
+    textAlign: 'right',
+  },
   clientMsgBox: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: R.md, padding: 12, marginTop: 14 },
   clientMsgLabel: { fontFamily: F.semibold, fontSize: 11, color: 'rgba(255,255,255,0.85)', textAlign: 'right', marginBottom: 6 },
   clientMsgText: { fontFamily: F.regular, fontSize: 13, color: '#FFF', textAlign: 'right', lineHeight: 20 },
