@@ -22,7 +22,8 @@ import { OfflineBanner } from '@/src/OfflineBanner';
 import { useAuth } from '@/src/AuthContext';
 import { AppModal, confirmAsync, DiagonalBand } from '@/src/ui';
 import { storage } from '@/src/utils/storage';
-import { C, F, R, fmt, shadow } from '@/src/theme';
+import { F, R, fmt, shadow } from '@/src/theme';
+import { useTheme } from '@/src/ThemeContext';
 
 type Dash = {
   clients_total: number;
@@ -41,18 +42,18 @@ type Series = {
   new_clients: number[];
 };
 
-const EVENT_LABELS: Record<string, { label: string; icon: any; color: string }> = {
+const makeEventLabels = (C: any): Record<string, { label: string; icon: any; color: string }> => ({
   shooting: { label: 'تصوير', icon: 'videocam', color: C.brand },
   delivery: { label: 'تسليم', icon: 'checkmark-done', color: C.success },
   other: { label: 'موعد', icon: 'calendar', color: C.muted },
-};
+});
 
-const STAGE_COLORS: Record<string, string> = {
+const makeStageColors = (C: any): Record<string, string> => ({
   idea: '#B8860B',
   filming: C.brand,
   editing: '#16808A',
   published: C.success,
-};
+});
 
 const STAGE_LABELS: Record<string, string> = {
   idea: 'أفكار',
@@ -87,8 +88,11 @@ const WIDGET_META: Record<WidgetKey, { label: string; icon: any }> = {
 };
 
 // مجمع الإحصائيات القابلة للاختيار المدقق بالرئيسية (طلب: اختيار مدقق بالإحصائيات
-// والتحاليل) — كل واحدة مرتبطة بحقل من استجابة /dashboard.
-const STATS_META: Record<string, { title: string; icon: any; getValue: (d: any) => string; accent?: boolean; color?: string; group: string }> = {
+// والتحاليل) — كل واحدة مرتبطة بحقل من استجابة /dashboard. تحوّلت لدالة تستقبل C
+// عشان تدعم الوضع الداكن (C ما عادت متغيّر عام بعد الآن).
+const makeStatsMeta = (
+  C: any
+): Record<string, { title: string; icon: any; getValue: (d: any) => string; accent?: boolean; color?: string; group: string }> => ({
   month_income: { title: 'دخل هذا الشهر', icon: 'trending-up', getValue: (d) => fmt(d?.month_income || 0), accent: true, group: 'المالية' },
   month_expenses: { title: 'مصاريف الشهر', icon: 'trending-down', getValue: (d) => fmt(d?.month_expenses || 0), color: C.error, group: 'المالية' },
   net_profit: { title: 'صافي الربح', icon: 'wallet', getValue: (d) => fmt(d?.net_profit ?? (d?.month_income || 0) - (d?.month_expenses || 0)), color: C.success, group: 'المالية' },
@@ -103,7 +107,7 @@ const STATS_META: Record<string, { title: string; icon: any; getValue: (d: any) 
   upcoming_events_count: { title: 'المواعيد القادمة', icon: 'calendar', getValue: (d) => String(d?.upcoming_events_count ?? 0), color: C.brand, group: 'التقويم' },
   events_today_count: { title: 'مواعيد اليوم', icon: 'today', getValue: (d) => String(d?.events_today_count ?? 0), color: C.brand, group: 'التقويم' },
   sanad_alerts_count: { title: 'تنبيهات سند', icon: 'sparkles', getValue: (d) => String(d?.sanad_alerts_count ?? 0), color: C.brand, group: 'سند' },
-};
+});
 const GROUP_ORDER = ['المالية', 'العملاء', 'المهام', 'التقويم', 'سند'];
 const GROUP_ICON: Record<string, any> = { المالية: 'wallet', العملاء: 'people', المهام: 'checkbox', التقويم: 'calendar', سند: 'sparkles' };
 
@@ -114,6 +118,9 @@ const PREFS_CACHE_KEY = 'azvio_dashboard_prefs_v2';
  * مو ١٤ (طلب: كل شوي ألف يمين يسار تعبني). كل صفحة فيها كل إحصائيات نفس
  * القسم مع سطر ملاحظة قصير. */
 function StatsCarousel({ keys, data, series }: { keys: string[]; data: any; series: Series | null }) {
+  const { C } = useTheme();
+  const styles = makeStyles(C);
+  const STATS_META = makeStatsMeta(C);
   const { width: screenW } = useWindowDimensions();
   const cardW = screenW - 32;
   const [activeIdx, setActiveIdx] = useState(0);
@@ -229,6 +236,10 @@ function sanitizeOrder(order: any[]): WidgetKey[] {
 }
 
 export default function Dashboard() {
+  const { C } = useTheme();
+  const styles = makeStyles(C);
+  const EVENT_LABELS = makeEventLabels(C);
+  const STAGE_COLORS = makeStageColors(C);
   const { user, logout } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -615,7 +626,7 @@ export default function Dashboard() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: any) => StyleSheet.create({
   header: {
     backgroundColor: C.surface,
     paddingHorizontal: 16,

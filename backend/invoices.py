@@ -37,6 +37,17 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 FONTS_DIR = os.path.join(os.path.dirname(__file__), "fonts")
 pdfmetrics.registerFont(TTFont("Cairo", os.path.join(FONTS_DIR, "Cairo-Regular.ttf")))
 pdfmetrics.registerFont(TTFont("Cairo-Bold", os.path.join(FONTS_DIR, "Cairo-Bold.ttf")))
+# خطوط بديلة اختيارية (طلب: خيارات متقدمة — اختيار الخط بالفاتورة/عرض السعر)
+pdfmetrics.registerFont(TTFont("Tajawal", os.path.join(FONTS_DIR, "Tajawal-Regular.ttf")))
+pdfmetrics.registerFont(TTFont("Tajawal-Bold", os.path.join(FONTS_DIR, "Tajawal-Bold.ttf")))
+pdfmetrics.registerFont(TTFont("Almarai", os.path.join(FONTS_DIR, "Almarai-Regular.ttf")))
+pdfmetrics.registerFont(TTFont("Almarai-Bold", os.path.join(FONTS_DIR, "Almarai-Bold.ttf")))
+
+FONT_CHOICES = {
+    "cairo": {"regular": "Cairo", "bold": "Cairo-Bold", "label": "Cairo (افتراضي)"},
+    "tajawal": {"regular": "Tajawal", "bold": "Tajawal-Bold", "label": "Tajawal"},
+    "almarai": {"regular": "Almarai", "bold": "Almarai-Bold", "label": "Almarai"},
+}
 
 
 def now_iso():
@@ -237,6 +248,9 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
         raise HTTPException(status_code=404, detail="المستند غير موجود")
 
     settings = await db.business_settings.find_one({"id": "invoice_design"}, {"_id": 0}) or {}
+    font_key = settings.get("font_choice", "cairo")
+    font_conf = FONT_CHOICES.get(font_key, FONT_CHOICES["cairo"])
+    F_REG, F_BOLD = font_conf["regular"], font_conf["bold"]
     custom_color = settings.get("accent_color")
     if custom_color:
         try:
@@ -278,7 +292,9 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
         except Exception:
             pass  # فشل تحميل الخلفية ما يوقف توليد الفاتورة نفسها
 
-    # الشعار المخصص (لو مرفوع ومفعّل) — يظهر أعلى يسار الصفحة
+    # الشعار المخصص (لو مرفوع ومفعّل) — موضعه يمين أو يسار حسب الإعداد
+    # (طلب: التحكم بمكان العناصر — فوق، يمين، يسار)
+    logo_position = settings.get("logo_position", "right")
     logo_url = settings.get("logo_url", "") if settings.get("show_logo", True) else ""
     if logo_url:
         try:
@@ -290,39 +306,53 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
             iw, ih = logo_img.getSize()
             logo_h = 40
             logo_w = logo_h * (iw / ih)
-            c.drawImage(logo_img, 50, height - 80, width=logo_w, height=logo_h, mask='auto')
+            logo_x = 50 if logo_position == "left" else (width - 50 - logo_w)
+            c.drawImage(logo_img, logo_x, height - 80, width=logo_w, height=logo_h, mask='auto')
         except Exception:
             pass  # فشل تحميل الشعار ما يوقف توليد الفاتورة نفسها
 
+    # محاذاة كتلة العنوان والبيانات العلوية (يمين | وسط | يسار) — طلب: التحكم
+    # بمكان النص فوق (يمين/يسار)، مو بس إظهاره
+    content_align = settings.get("content_align", "right")
+    if content_align == "left":
+        head_x, draw_head = 50, c.drawString
+    elif content_align == "center":
+        head_x, draw_head = width / 2, c.drawCentredString
+    else:
+        head_x, draw_head = right, c.drawRightString
+
     title = "عرض سعر" if doc["is_quote"] else "فاتورة" + (" ضريبية" if doc.get("apply_vat", True) else "")
     c.setFillColor(accent)
-    c.setFont("Cairo-Bold", 20)
-    c.drawRightString(right, y, rtl("AZVIO — " + title))
+    c.setFont(F_BOLD, 20)
+    draw_head(head_x, y, rtl("AZVIO — " + title))
     c.setFillColor(colors.black)
     y -= 22
-    c.setFont("Cairo", 11)
-    c.drawRightString(right, y, rtl(f"رقم المستند: {doc['display_number']}"))
-    y -= 16
-    c.drawRightString(right, y, rtl(f"التاريخ: {doc['created_at'][:10]}"))
-    y -= 16
+    c.setFont(F_REG, 11)
+    if settings.get("show_document_number", True):
+        draw_head(head_x, y, rtl(f"رقم المستند: {doc['display_number']}"))
+        y -= 16
+    if settings.get("show_date", True):
+        draw_head(head_x, y, rtl(f"التاريخ: {doc['created_at'][:10]}"))
+        y -= 16
     tax_number = settings.get("tax_number", "")
     if settings.get("show_tax_number", False) and tax_number:
-        c.drawRightString(right, y, rtl(f"الرقم الضريبي: {tax_number}"))
+        draw_head(head_x, y, rtl(f"الرقم الضريبي: {tax_number}"))
         y -= 16
     y -= 14
 
-    c.setFont("Cairo-Bold", 13)
-    c.drawRightString(right, y, rtl(f"إلى: {doc['client_name']}"))
-    y -= 20
+    if settings.get("show_client_name", True):
+        c.setFont(F_BOLD, 13)
+        draw_head(head_x, y, rtl(f"إلى: {doc['client_name']}"))
+        y -= 20
     if doc.get("show_sub_category", True) and doc.get("sub_category"):
-        c.setFont("Cairo", 10)
-        c.drawRightString(right, y, rtl(f"الفئة: {doc['sub_category']}"))
+        c.setFont(F_REG, 10)
+        draw_head(head_x, y, rtl(f"الفئة: {doc['sub_category']}"))
         y -= 20
     y -= 10
 
     # Table header
     c.setFillColor(accent)
-    c.setFont("Cairo-Bold", 11)
+    c.setFont(F_BOLD, 11)
     c.drawRightString(right, y, rtl("الوصف"))
     c.drawString(50, y, rtl("المبلغ (ر.س)"))
     c.setFillColor(colors.black)
@@ -330,7 +360,7 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
     c.line(50, y, right, y)
     y -= 18
 
-    c.setFont("Cairo", 11)
+    c.setFont(F_REG, 11)
     for item in doc["items"]:
         c.drawRightString(right, y, rtl(item["description"]))
         c.drawString(50, y, f"{item['amount']:,.2f}")
@@ -341,7 +371,7 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
     y -= 22
 
     apply_vat = doc.get("apply_vat", True)
-    c.setFont("Cairo", 11)
+    c.setFont(F_REG, 11)
     if apply_vat:
         c.drawRightString(right, y, rtl("الإجمالي قبل الضريبة"))
         c.drawString(50, y, f"{doc['subtotal']:,.2f}")
@@ -350,21 +380,21 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
         c.drawString(50, y, f"{doc['vat_amount']:,.2f}")
         y -= 20
     c.setFillColor(accent)
-    c.setFont("Cairo-Bold", 13)
+    c.setFont(F_BOLD, 13)
     c.drawRightString(right, y, rtl("الإجمالي النهائي"))
     c.drawString(50, y, f"{doc['total']:,.2f}")
     c.setFillColor(colors.black)
     y -= 40
 
     if doc.get("show_notes", True) and doc.get("notes"):
-        c.setFont("Cairo", 10)
+        c.setFont(F_REG, 10)
         c.drawRightString(right, y, rtl("ملاحظات: " + doc["notes"]))
         y -= 20
 
     terms_text = settings.get("terms_text", "")
-    if terms_text:
+    if settings.get("show_terms", True) and terms_text:
         y -= 6
-        c.setFont("Cairo", 9)
+        c.setFont(F_REG, 9)
         c.setFillColor(colors.grey)
         for line in terms_text.split("\n"):
             if line.strip():
@@ -372,9 +402,10 @@ async def _build_document_pdf_bytes(doc_id: str) -> bytes:
                 y -= 14
         c.setFillColor(colors.black)
 
-    footer_text = settings.get("footer_text", "") or "AZVIO — التصوير الجوي بالدرون والمونتاج"
-    c.setFont("Cairo", 9)
-    c.drawRightString(right, 40, rtl(footer_text))
+    if settings.get("show_footer", True):
+        footer_text = settings.get("footer_text", "") or "AZVIO — التصوير الجوي بالدرون والمونتاج"
+        c.setFont(F_REG, 9)
+        c.drawRightString(right, 40, rtl(footer_text))
 
     c.showPage()
     c.save()
@@ -618,6 +649,15 @@ class InvoiceDesignSettings(BaseModel):
     show_tax_number: bool = False
     footer_text: str = "AZVIO — التصوير الجوي بالدرون والمونتاج"  # نص التذييل، قابل للتعديل الكامل
     terms_text: str = ""  # شروط/ملاحظات ثابتة تظهر بكل فاتورة (شروط الدفع، بيانات بنكية...)
+    # خيارات متقدمة (طلب: اختيار النصوص المحددة والأماكن والترتيب والخطوط)
+    font_choice: str = "cairo"  # cairo | tajawal | almarai
+    show_document_number: bool = True
+    show_date: bool = True
+    show_client_name: bool = True
+    show_footer: bool = True
+    show_terms: bool = True
+    logo_position: str = "right"  # right | left — طلب: التحكم بمكان الشعار
+    content_align: str = "right"  # right | center | left — محاذاة النص الرئيسي
 
 
 @router.get("/invoices/design-settings")
@@ -641,6 +681,15 @@ async def get_design_settings():
         "show_tax_number": doc.get("show_tax_number", False),
         "footer_text": doc.get("footer_text", "AZVIO — التصوير الجوي بالدرون والمونتاج"),
         "terms_text": doc.get("terms_text", ""),
+        "font_choice": doc.get("font_choice", "cairo"),
+        "show_document_number": doc.get("show_document_number", True),
+        "show_date": doc.get("show_date", True),
+        "show_client_name": doc.get("show_client_name", True),
+        "show_footer": doc.get("show_footer", True),
+        "show_terms": doc.get("show_terms", True),
+        "logo_position": doc.get("logo_position", "right"),
+        "content_align": doc.get("content_align", "right"),
+        "font_options": [{"key": k, "label": v["label"]} for k, v in FONT_CHOICES.items()],
     }
 
 
@@ -661,6 +710,14 @@ async def update_design_settings(body: InvoiceDesignSettings):
             "show_tax_number": body.show_tax_number,
             "footer_text": body.footer_text,
             "terms_text": body.terms_text,
+            "font_choice": body.font_choice if body.font_choice in FONT_CHOICES else "cairo",
+            "show_document_number": body.show_document_number,
+            "show_date": body.show_date,
+            "show_client_name": body.show_client_name,
+            "show_footer": body.show_footer,
+            "show_terms": body.show_terms,
+            "logo_position": body.logo_position if body.logo_position in ("right", "left") else "right",
+            "content_align": body.content_align if body.content_align in ("right", "center", "left") else "right",
             "updated_at": datetime.now().isoformat(),
         }},
         upsert=True,

@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
 import { AppModal, Field, ScreenHeader } from '@/src/ui';
-import { C, F, R, shadow } from '@/src/theme';
+import { F, R, shadow } from '@/src/theme';
+import { useTheme } from '@/src/ThemeContext';
 
 const ALL_CARDS = [
   { key: 'content', title: 'المحتوى', icon: 'film' as const },
@@ -59,6 +60,8 @@ const MAJOR_WIDGETS = [
 type Card = { key: string; title: string; icon: any; isCustom: boolean; customId?: string };
 
 export default function HomeCustomizeScreen() {
+  const { C } = useTheme();
+  const styles = makeStyles(C);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [order, setOrder] = useState<string[]>(ALL_CARDS.map((c) => c.key));
@@ -339,7 +342,7 @@ export default function HomeCustomizeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.surface2 },
   sectionHeading: { fontFamily: F.bold, fontSize: 14, color: C.onSurface, textAlign: 'right', marginBottom: 10 },
   hintRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 12 },

@@ -25,9 +25,10 @@ import { apiCached } from '@/src/offlineCache';
 import { OfflineBanner } from '@/src/OfflineBanner';
 import { AppModal, Chips, Empty, Field, confirmAsync } from '@/src/ui';
 import { DateField } from '@/src/DateTimePicker';
-import { C, F, R, fmt, shadow } from '@/src/theme';
+import { F, R, fmt, shadow } from '@/src/theme';
+import { useTheme } from '@/src/ThemeContext';
 
-const TX_TYPES = [
+const makeTxTypes = (C: any) => [
   { key: 'income', label: 'دخل', color: C.success },
   { key: 'expense', label: 'مصروف', color: C.error },
   { key: 'withdrawal', label: 'سحب', color: '#B8860B' },
@@ -35,13 +36,13 @@ const TX_TYPES = [
   { key: 'subscription', label: 'اشتراك', color: '#16808A' },
 ];
 
-const TX_META: Record<string, { label: string; icon: any; color: string; sign: string }> = {
+const makeTxMeta = (C: any): Record<string, { label: string; icon: any; color: string; sign: string }> => ({
   income: { label: 'دخل', icon: 'arrow-down-circle', color: C.success, sign: '+' },
   expense: { label: 'مصروف', icon: 'arrow-up-circle', color: C.error, sign: '-' },
   withdrawal: { label: 'سحب', icon: 'cash', color: '#B8860B', sign: '-' },
   debt: { label: 'دين', icon: 'swap-horizontal', color: '#8E44AD', sign: '' },
   subscription: { label: 'اشتراك', icon: 'repeat', color: '#16808A', sign: '-' },
-};
+});
 
 const SEGMENTS = [
   { key: 'overview', label: 'نظرة عامة' },
@@ -57,12 +58,12 @@ const monthShort = (ym: string) => {
   return AR_MONTHS_SHORT[(m - 1) % 12];
 };
 
-const TYPE_COLORS: Record<string, string> = {
+const makeTypeColors = (C: any): Record<string, string> => ({
   income: C.success,
   expense: C.error,
   withdrawal: '#B8860B',
   subscription: '#16808A',
-};
+});
 
 const emptyForm = {
   type: 'income',
@@ -75,6 +76,11 @@ const emptyForm = {
 };
 
 export default function FinanceScreen() {
+  const { C } = useTheme();
+  const styles = makeStyles(C);
+  const TX_TYPES = makeTxTypes(C);
+  const TX_META = makeTxMeta(C);
+  const TYPE_COLORS = makeTypeColors(C);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -962,6 +968,7 @@ export default function FinanceScreen() {
 }
 
 function LegendChip({ color, label }: { color: string; label: string }) {
+  const { C } = useTheme();
   return (
     <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
       <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />
@@ -970,7 +977,7 @@ function LegendChip({ color, label }: { color: string; label: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: any) => StyleSheet.create({
   searchBox: {
     flexDirection: 'row-reverse',
     alignItems: 'center',

@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
 import { Empty, ScreenHeader } from '@/src/ui';
-import { C, F, R, shadow } from '@/src/theme';
+import { F, R, shadow } from '@/src/theme';
+import { useTheme } from '@/src/ThemeContext';
 
 type Ticket = {
   id: string;
@@ -17,6 +18,8 @@ type Ticket = {
 };
 
 export default function TicketsScreen() {
+  const { C } = useTheme();
+  const styles = makeStyles(C);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<'open' | 'resolved' | 'all'>('open');
 
@@ -96,7 +99,7 @@ export default function TicketsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: any) => StyleSheet.create({
   filters: { flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: R.pill, backgroundColor: C.surface },
   filterChipActive: { backgroundColor: C.brand },

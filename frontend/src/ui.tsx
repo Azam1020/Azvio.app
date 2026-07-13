@@ -17,7 +17,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
-import { C, F, R } from './theme';
+import { F, R } from './theme';
+import { useTheme } from './ThemeContext';
 
 /** الشريط القطري المزدوج (تيل + فحمي) — عنصر الهوية البصرية "المعتمدة نهائيًا"
  * المستوحى من تداخل طبقتي شعار AZVIO. يُستخدم أعلى الشاشات الرئيسية (الدخول،
@@ -25,8 +26,8 @@ import { C, F, R } from './theme';
 export function DiagonalBand({
   height = 130,
   children,
-  teal = C.brand,
-  charcoal = C.charcoal,
+  teal,
+  charcoal,
   style,
 }: {
   height?: number;
@@ -35,6 +36,9 @@ export function DiagonalBand({
   charcoal?: string;
   style?: any;
 }) {
+  const { C } = useTheme();
+  const tealColor = teal || C.brand;
+  const charcoalColor = charcoal || C.charcoal;
   const W = 400; // مرجع فقط — الشكل يتمدد لعرض الشاشة الفعلي عبر preserveAspectRatio="none"
   const H = height;
   return (
@@ -42,8 +46,8 @@ export function DiagonalBand({
       <Svg width="100%" height={height} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0 }}>
         <Defs>
           <LinearGradient id="bandGrad" x1="0" y1="0" x2={W} y2={H * 0.6} gradientUnits="userSpaceOnUse">
-            <Stop offset="0.55" stopColor={teal} />
-            <Stop offset="0.55" stopColor={charcoal} />
+            <Stop offset="0.55" stopColor={tealColor} />
+            <Stop offset="0.55" stopColor={charcoalColor} />
           </LinearGradient>
         </Defs>
         {/* شكل مقطوع بخط مائل (يطابق clip-path: polygon(0 0,100% 0,100% 80%,0 100%)) */}
@@ -57,7 +61,7 @@ export function DiagonalBand({
 /** بطاقة موحّدة بهوية "زوايا الفوكس" (مستوحاة من إطار كاميرا الدرون) — التوقيع
  * البصري الرسمي لتطبيق AZVIO. تُستخدم بدل أي View بطاقة عادية بأي شاشة، عشان
  * كل الشاشات تاخذ نفس الهوية بمكان واحد بدل تكرار كود الزوايا يدويًا في كل ملف
- * (طلب: التصميم الجديد يتطبق على جميع الصفحات). */
+ * (طلب: التصميم الجديد يتطبق على جميع الصفحات، ومع دعم الوضع الداكن). */
 export function BracketCard({
   children,
   style,
@@ -69,6 +73,8 @@ export function BracketCard({
   accent?: boolean;
   corners?: 'both' | 'tl' | 'none';
 }) {
+  const { C } = useTheme();
+  const bracketStyles = React.useMemo(() => makeBracketStyles(C), [C]);
   return (
     <View style={[bracketStyles.card, accent && { backgroundColor: C.brand }, style]}>
       {corners !== 'none' && (
@@ -82,17 +88,18 @@ export function BracketCard({
   );
 }
 
-const bracketStyles = StyleSheet.create({
-  card: {
-    backgroundColor: C.surface,
-    borderRadius: R.lg,
-    overflow: 'hidden',
-  },
-  bracket: { position: 'absolute', width: 12, height: 12, borderColor: C.brand, opacity: 0.35 },
-  tl: { top: 6, left: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderTopLeftRadius: 4 },
-  br: { bottom: 6, right: 6, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderBottomRightRadius: 4 },
-  bracketOnAccent: { borderColor: 'rgba(255,255,255,0.55)', opacity: 1 },
-});
+const makeBracketStyles = (C: any) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: C.surface,
+      borderRadius: R.lg,
+      overflow: 'hidden',
+    },
+    bracket: { position: 'absolute', width: 12, height: 12, borderColor: C.brand, opacity: 0.35 },
+    tl: { top: 6, left: 6, borderTopWidth: 1.5, borderLeftWidth: 1.5, borderTopLeftRadius: 4 },
+    br: { bottom: 6, right: 6, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderBottomRightRadius: 4 },
+    bracketOnAccent: { borderColor: 'rgba(255,255,255,0.55)', opacity: 1 },
+  });
 
 export function ScreenHeader({
   title,
@@ -107,6 +114,8 @@ export function ScreenHeader({
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { C } = useTheme();
+  const hs = React.useMemo(() => makeHeaderStyles(C), [C]);
   return (
     <View style={[hs.wrap, { paddingTop: insets.top + 8 }]}>
       <View style={hs.row}>
@@ -127,20 +136,23 @@ export function ScreenHeader({
   );
 }
 
-const hs = StyleSheet.create({
-  wrap: { backgroundColor: C.surface, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
-  row: { flexDirection: 'row-reverse', alignItems: 'center' },
-  side: { width: 44, alignItems: 'center' },
-  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.surface2, alignItems: 'center', justifyContent: 'center' },
-  title: { fontFamily: F.bold, fontSize: 18, color: C.onSurface },
-  subtitle: { fontFamily: F.regular, fontSize: 12, color: C.muted, marginTop: -2 },
-});
+const makeHeaderStyles = (C: any) =>
+  StyleSheet.create({
+    wrap: { backgroundColor: C.surface, paddingHorizontal: 16, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+    row: { flexDirection: 'row-reverse', alignItems: 'center' },
+    side: { width: 44, alignItems: 'center' },
+    backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.surface2, alignItems: 'center', justifyContent: 'center' },
+    title: { fontFamily: F.bold, fontSize: 18, color: C.onSurface },
+    subtitle: { fontFamily: F.regular, fontSize: 12, color: C.muted, marginTop: -2 },
+  });
 
 // ---------- Form field ----------
 export function Field({
   label,
   ...props
 }: TextInputProps & { label: string }) {
+  const { C } = useTheme();
+  const fs = React.useMemo(() => makeFieldStyles(C), [C]);
   return (
     <View style={{ marginBottom: 14 }}>
       <Text style={fs.label}>{label}</Text>
@@ -153,21 +165,22 @@ export function Field({
   );
 }
 
-const fs = StyleSheet.create({
-  label: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, marginBottom: 6, textAlign: 'right' },
-  input: {
-    backgroundColor: C.surface2,
-    borderRadius: R.md,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 9,
-    fontFamily: F.regular,
-    fontSize: 15,
-    color: C.onSurface,
-    textAlign: 'right',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-});
+const makeFieldStyles = (C: any) =>
+  StyleSheet.create({
+    label: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, marginBottom: 6, textAlign: 'right' },
+    input: {
+      backgroundColor: C.surface2,
+      borderRadius: R.md,
+      paddingHorizontal: 14,
+      paddingVertical: Platform.OS === 'ios' ? 12 : 9,
+      fontFamily: F.regular,
+      fontSize: 15,
+      color: C.onSurface,
+      textAlign: 'right',
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+  });
 
 // ---------- Chips selector ----------
 export function Chips({
@@ -179,6 +192,8 @@ export function Chips({
   value: string;
   onChange: (key: string) => void;
 }) {
+  const { C } = useTheme();
+  const cs = React.useMemo(() => makeChipsStyles(C), [C]);
   return (
     <View style={cs.row}>
       {options.map((o) => {
@@ -198,18 +213,19 @@ export function Chips({
   );
 }
 
-const cs = StyleSheet.create({
-  row: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: R.pill,
-    backgroundColor: C.surface2,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  chipText: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2 },
-});
+const makeChipsStyles = (C: any) =>
+  StyleSheet.create({
+    row: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+    chip: {
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      borderRadius: R.pill,
+      backgroundColor: C.surface2,
+      borderWidth: 1,
+      borderColor: C.border,
+    },
+    chipText: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2 },
+  });
 
 // ---------- Bottom-sheet style modal ----------
 export function AppModal({
@@ -232,6 +248,8 @@ export function AppModal({
   scrollEnabled?: boolean; // عطّلها للمحتوى اللي فيه إيماءة سحب خاصة به (زي لوحة التوقيع) عشان لا يتنافس مع تمرير المودال
 }) {
   const insets = useSafeAreaInsets();
+  const { C } = useTheme();
+  const ms = React.useMemo(() => makeModalStyles(C), [C]);
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -266,32 +284,35 @@ export function AppModal({
   );
 }
 
-const ms = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: C.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-  },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.surface3, alignSelf: 'center', marginBottom: 10 },
-  headRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  title: { fontFamily: F.bold, fontSize: 17, color: C.onSurface },
-  saveBtn: {
-    backgroundColor: C.brand,
-    borderRadius: R.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 12,
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  saveText: { fontFamily: F.bold, fontSize: 16, color: '#FFF' },
-});
+const makeModalStyles = (C: any) =>
+  StyleSheet.create({
+    backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+    sheet: {
+      backgroundColor: C.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingHorizontal: 20,
+      paddingTop: 8,
+    },
+    handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.surface3, alignSelf: 'center', marginBottom: 10 },
+    headRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+    title: { fontFamily: F.bold, fontSize: 17, color: C.onSurface },
+    saveBtn: {
+      backgroundColor: C.brand,
+      borderRadius: R.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: 12,
+      minHeight: 48,
+      justifyContent: 'center',
+    },
+    saveText: { fontFamily: F.bold, fontSize: 16, color: '#FFF' },
+  });
 
 // ---------- Empty state ----------
 export function Empty({ icon, text, hint }: { icon: any; text: string; hint?: string }) {
+  const { C } = useTheme();
+  const es = React.useMemo(() => makeEmptyStyles(C), [C]);
   return (
     <View style={es.wrap}>
       <View style={es.iconCircle}>
@@ -303,12 +324,13 @@ export function Empty({ icon, text, hint }: { icon: any; text: string; hint?: st
   );
 }
 
-const es = StyleSheet.create({
-  wrap: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
-  iconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.brandSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  text: { fontFamily: F.semibold, fontSize: 16, color: C.onSurface, textAlign: 'center' },
-  hint: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'center', marginTop: 6 },
-});
+const makeEmptyStyles = (C: any) =>
+  StyleSheet.create({
+    wrap: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
+    iconCircle: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.brandSoft, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+    text: { fontFamily: F.semibold, fontSize: 16, color: C.onSurface, textAlign: 'center' },
+    hint: { fontFamily: F.regular, fontSize: 13, color: C.muted, textAlign: 'center', marginTop: 6 },
+  });
 
 // ---------- Cross-platform confirm ----------
 export function confirmAsync(title: string, message: string): Promise<boolean> {

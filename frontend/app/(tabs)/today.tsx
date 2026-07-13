@@ -17,7 +17,8 @@ import { api } from '@/src/api';
 import { useAuth } from '@/src/AuthContext';
 import { AppModal, Chips, Empty, Field, ScreenHeader } from '@/src/ui';
 import { DateField } from '@/src/DateTimePicker';
-import { C, F, R, shadow } from '@/src/theme';
+import { F, R, shadow } from '@/src/theme';
+import { useTheme } from '@/src/ThemeContext';
 
 type Task = {
   id: string;
@@ -29,12 +30,12 @@ type Task = {
   client_name?: string;
 };
 
-const PRIORITY_COLORS: Record<string, string> = {
+const makePriorityColors = (C: any): Record<string, string> => ({
   low: C.muted,
   normal: C.brand,
   high: '#E08A00',
   urgent: C.error,
-};
+});
 
 const PRIORITY_LABELS: Record<string, string> = {
   low: 'منخفضة',
@@ -44,6 +45,9 @@ const PRIORITY_LABELS: Record<string, string> = {
 };
 
 export default function TodayScreen() {
+  const { C } = useTheme();
+  const styles = makeStyles(C);
+  const PRIORITY_COLORS = makePriorityColors(C);
   const { user } = useAuth();
   const [groups, setGroups] = useState<{ overdue: Task[]; today: Task[]; upcoming: Task[] }>({
     overdue: [],
@@ -395,7 +399,7 @@ export default function TodayScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: any) => StyleSheet.create({
   wrap: { padding: 16, paddingBottom: 40 },
   addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.brandSoft, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { fontFamily: F.bold, fontSize: 14, color: C.onSurface, textAlign: 'right', marginBottom: 8, marginTop: 12 },

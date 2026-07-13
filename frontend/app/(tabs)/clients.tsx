@@ -16,13 +16,16 @@ import { api } from '@/src/api';
 import { apiCached } from '@/src/offlineCache';
 import { OfflineBanner } from '@/src/OfflineBanner';
 import { AppModal, Empty, Field } from '@/src/ui';
-import { C, F, R, fmt, shadow } from '@/src/theme';
+import { F, R, fmt, shadow } from '@/src/theme';
+import { useTheme } from '@/src/ThemeContext';
 import { SERVICE_LABELS, openWhatsApp } from '@/src/clientHelpers';
 import { CategoryPicker } from '@/src/CategoryPicker';
 import { SanadPriceOpinion } from '@/src/SanadPriceOpinion';
 import { ServiceTypeChips, useServiceTypeLabel } from '@/src/ServiceTypeChips';
 
 export default function ClientsScreen() {
+  const { C } = useTheme();
+  const styles = makeStyles(C);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const serviceLabels = useServiceTypeLabel();
@@ -217,7 +220,7 @@ export default function ClientsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: any) => StyleSheet.create({
   header: {
     backgroundColor: C.surface,
     paddingHorizontal: 16,

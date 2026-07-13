@@ -14,7 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api } from '@/src/api';
 import { BracketCard, ScreenHeader } from '@/src/ui';
-import { C, F, R, shadow } from '@/src/theme';
+import { F, R, shadow } from '@/src/theme';
+import { useTheme } from '@/src/ThemeContext';
 
 type PricingItem = {
   id: string;
@@ -29,6 +30,8 @@ type PricingItem = {
 type ServiceTypeItem = { id: string; key: string; label: string };
 
 export default function QuickPriceScreen() {
+  const { C } = useTheme();
+  const styles = makeStyles(C);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<PricingItem[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceTypeItem[]>([]);
@@ -482,7 +485,7 @@ export default function QuickPriceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.surface2 },
   sectionTitle: { fontFamily: F.bold, fontSize: 14, color: C.onSurface, textAlign: 'right', marginBottom: 10 },
   chipsRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginBottom: 12 },

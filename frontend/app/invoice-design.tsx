@@ -14,11 +14,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { api, apiUpload } from '@/src/api';
 import { Chips, Field, ScreenHeader, confirmAsync } from '@/src/ui';
-import { C, F, R, shadow } from '@/src/theme';
+import { F, R, shadow } from '@/src/theme';
+import { useTheme } from '@/src/ThemeContext';
 
 const PRESET_COLORS = ['#3E9194', '#8E44AD', '#C0392B', '#16808A', '#B8860B', '#2C3E50'];
 
 export default function InvoiceDesignSettingsScreen() {
+  const { C } = useTheme();
+  const styles = makeStyles(C);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadingBg, setUploadingBg] = useState(false);
@@ -38,7 +41,18 @@ export default function InvoiceDesignSettingsScreen() {
     show_tax_number: false,
     footer_text: 'AZVIO — التصوير الجوي بالدرون والمونتاج',
     terms_text: '',
+    font_choice: 'cairo',
+    show_document_number: true,
+    show_date: true,
+    show_client_name: true,
+    show_footer: true,
+    show_terms: true,
+    logo_position: 'right',
+    content_align: 'right',
   });
+  const [fontOptions, setFontOptions] = useState<{ key: string; label: string }[]>([
+    { key: 'cairo', label: 'Cairo (افتراضي)' },
+  ]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,7 +73,16 @@ export default function InvoiceDesignSettingsScreen() {
         show_tax_number: r.show_tax_number ?? false,
         footer_text: r.footer_text || 'AZVIO — التصوير الجوي بالدرون والمونتاج',
         terms_text: r.terms_text || '',
+        font_choice: r.font_choice || 'cairo',
+        show_document_number: r.show_document_number ?? true,
+        show_date: r.show_date ?? true,
+        show_client_name: r.show_client_name ?? true,
+        show_footer: r.show_footer ?? true,
+        show_terms: r.show_terms ?? true,
+        logo_position: r.logo_position || 'right',
+        content_align: r.content_align || 'right',
       });
+      if (r.font_options?.length) setFontOptions(r.font_options);
     } catch {}
     setLoading(false);
   }, []);
@@ -180,6 +203,14 @@ export default function InvoiceDesignSettingsScreen() {
           show_tax_number: settings.show_tax_number,
           footer_text: settings.footer_text,
           terms_text: settings.terms_text,
+          font_choice: settings.font_choice,
+          show_document_number: settings.show_document_number,
+          show_date: settings.show_date,
+          show_client_name: settings.show_client_name,
+          show_footer: settings.show_footer,
+          show_terms: settings.show_terms,
+          logo_position: settings.logo_position,
+          content_align: settings.content_align,
         }),
       });
       Alert.alert('تم الحفظ', '✅ صار هذا التصميم افتراضي لكل الفواتير الجديدة');
@@ -399,6 +430,114 @@ export default function InvoiceDesignSettingsScreen() {
           />
         </View>
 
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>خيارات متقدمة</Text>
+
+          <Text style={styles.fieldLabel}>الخط</Text>
+          <View style={styles.fontRow}>
+            {fontOptions.map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                style={[styles.fontChip, settings.font_choice === f.key && styles.fontChipActive]}
+                onPress={() => setSettings((s) => ({ ...s, font_choice: f.key }))}
+              >
+                <Text style={[styles.fontChipText, settings.font_choice === f.key && styles.fontChipTextActive]}>{f.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.fieldLabel, { marginTop: 14 }]}>موضع الشعار (فوق)</Text>
+          <View style={styles.fontRow}>
+            {[
+              { key: 'right', label: 'يمين' },
+              { key: 'left', label: 'يسار' },
+            ].map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.fontChip, settings.logo_position === opt.key && styles.fontChipActive]}
+                onPress={() => setSettings((s) => ({ ...s, logo_position: opt.key }))}
+              >
+                <Text style={[styles.fontChipText, settings.logo_position === opt.key && styles.fontChipTextActive]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.fieldLabel, { marginTop: 14 }]}>محاذاة النص العلوي (العنوان وبيانات المستند)</Text>
+          <View style={styles.fontRow}>
+            {[
+              { key: 'right', label: 'يمين' },
+              { key: 'center', label: 'وسط' },
+              { key: 'left', label: 'يسار' },
+            ].map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.fontChip, settings.content_align === opt.key && styles.fontChipActive]}
+                onPress={() => setSettings((s) => ({ ...s, content_align: opt.key }))}
+              >
+                <Text style={[styles.fontChipText, settings.content_align === opt.key && styles.fontChipTextActive]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.fieldLabel, { marginTop: 14 }]}>إظهار الحقول</Text>
+          <View style={styles.switchRow}>
+            <Switch
+              value={settings.show_document_number}
+              onValueChange={(v) => setSettings((s) => ({ ...s, show_document_number: v }))}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+            <Text style={styles.switchLabel}>رقم المستند</Text>
+          </View>
+          <View style={styles.switchRow}>
+            <Switch
+              value={settings.show_date}
+              onValueChange={(v) => setSettings((s) => ({ ...s, show_date: v }))}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+            <Text style={styles.switchLabel}>التاريخ</Text>
+          </View>
+          <View style={styles.switchRow}>
+            <Switch
+              value={settings.show_client_name}
+              onValueChange={(v) => setSettings((s) => ({ ...s, show_client_name: v }))}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+            <Text style={styles.switchLabel}>اسم العميل</Text>
+          </View>
+          <View style={styles.switchRow}>
+            <Switch
+              value={settings.show_sub_category}
+              onValueChange={(v) => setSettings((s) => ({ ...s, show_sub_category: v }))}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+            <Text style={styles.switchLabel}>الفئة الفرعية</Text>
+          </View>
+          <View style={styles.switchRow}>
+            <Switch
+              value={settings.show_notes}
+              onValueChange={(v) => setSettings((s) => ({ ...s, show_notes: v }))}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+            <Text style={styles.switchLabel}>الملاحظات</Text>
+          </View>
+          <View style={styles.switchRow}>
+            <Switch
+              value={settings.show_terms}
+              onValueChange={(v) => setSettings((s) => ({ ...s, show_terms: v }))}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+            <Text style={styles.switchLabel}>الشروط الثابتة (اللي كتبتها فوق)</Text>
+          </View>
+          <View style={styles.switchRow}>
+            <Switch
+              value={settings.show_footer}
+              onValueChange={(v) => setSettings((s) => ({ ...s, show_footer: v }))}
+              trackColor={{ true: C.brand, false: C.border }}
+            />
+            <Text style={styles.switchLabel}>نص التذييل (اللي كتبته فوق)</Text>
+          </View>
+        </View>
+
         <TouchableOpacity style={styles.saveBtn} onPress={save} disabled={saving}>
           {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>حفظ التصميم</Text>}
         </TouchableOpacity>
@@ -407,15 +546,21 @@ export default function InvoiceDesignSettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (C: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.surface2 },
   content: { padding: 16, paddingBottom: 40 },
   card: { backgroundColor: C.surface, borderRadius: R.lg, padding: 16, marginBottom: 14, ...shadow },
   sectionTitle: { fontFamily: F.bold, fontSize: 14, color: C.onSurface, textAlign: 'right', marginBottom: 6 },
   sectionHint: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'right', marginBottom: 14 },
+  fieldLabel: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, textAlign: 'right', marginBottom: 8 },
+  fontRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  fontChip: { backgroundColor: C.surface2, borderRadius: R.pill, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: C.surface2 },
+  fontChipActive: { backgroundColor: C.brandSoft, borderColor: C.brand },
+  fontChipText: { fontFamily: F.semibold, fontSize: 12.5, color: C.onSurface2 },
+  fontChipTextActive: { color: C.brandDark },
   uploadBox: {
     borderWidth: 1.5,
-    borderColor: C.divider,
+    borderColor: C.border,
     borderStyle: 'dashed',
     borderRadius: R.md,
     paddingVertical: 30,
@@ -433,7 +578,7 @@ const styles = StyleSheet.create({
   colorRow: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 12 },
   colorSwatch: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
   colorSwatchActive: { borderColor: C.onSurface },
-  colorSwatchDefault: { backgroundColor: C.surface2, borderWidth: 1, borderColor: C.divider },
+  colorSwatchDefault: { backgroundColor: C.surface2, borderWidth: 1, borderColor: C.border },
   bgPreview: { width: '100%', height: 120, borderRadius: R.sm, backgroundColor: C.surface2 },
   opacityChip: {
     paddingHorizontal: 14,
@@ -441,7 +586,7 @@ const styles = StyleSheet.create({
     borderRadius: R.md,
     backgroundColor: C.surface2,
     borderWidth: 1,
-    borderColor: C.divider,
+    borderColor: C.border,
   },
   opacityChipActive: { backgroundColor: C.brand, borderColor: C.brand },
   opacityChipText: { fontFamily: F.semibold, fontSize: 12, color: C.onSurface },
