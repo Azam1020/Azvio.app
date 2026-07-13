@@ -20,7 +20,7 @@ import { api } from '@/src/api';
 import { apiCached } from '@/src/offlineCache';
 import { OfflineBanner } from '@/src/OfflineBanner';
 import { useAuth } from '@/src/AuthContext';
-import { AppModal, confirmAsync } from '@/src/ui';
+import { AppModal, confirmAsync, DiagonalBand } from '@/src/ui';
 import { storage } from '@/src/utils/storage';
 import { C, F, R, fmt, shadow } from '@/src/theme';
 
@@ -446,7 +446,7 @@ export default function Dashboard() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.surface2 }}>
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <DiagonalBand height={130} style={{ paddingTop: insets.top }}>
         <View style={styles.headerRow}>
           <Image
             source={require('../../assets/images/azvio-logo.png')}
@@ -454,39 +454,39 @@ export default function Dashboard() {
             resizeMode="contain"
           />
           <View style={{ flex: 1, alignItems: 'flex-end' }}>
-            <Text style={styles.greeting}>أهلاً، {user?.name?.split(' ')[0] || 'عزّام'} 👋</Text>
-            <Text style={styles.brandSmall}>
-              AZV<Text style={{ color: C.brand }}>IO</Text>
+            <Text style={[styles.greeting, { color: '#FFF' }]}>أهلاً، {user?.name?.split(' ')[0] || 'عزّام'} 👋</Text>
+            <Text style={[styles.brandSmall, { color: 'rgba(255,255,255,0.85)' }]}>
+              AZV<Text style={{ color: '#FFF' }}>IO</Text>
             </Text>
           </View>
           <TouchableOpacity
-            style={styles.headerBtn}
+            style={[styles.headerBtn, { backgroundColor: 'rgba(255,255,255,0.18)' }]}
             onPress={() => router.push('/home-customize')}
             testID="customize-dashboard-btn"
           >
-            <Ionicons name="options-outline" size={20} color={C.onSurface2} />
+            <Ionicons name="options-outline" size={20} color="#FFF" />
           </TouchableOpacity>
           {installAvailable && (
             <TouchableOpacity
-              style={[styles.headerBtn, { backgroundColor: C.brandSoft }]}
+              style={[styles.headerBtn, { backgroundColor: 'rgba(255,255,255,0.18)' }]}
               onPress={doInstall}
               testID="install-pwa-btn"
             >
-              <Ionicons name="download-outline" size={20} color={C.brand} />
+              <Ionicons name="download-outline" size={20} color="#FFF" />
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={styles.headerBtn}
+            style={[styles.headerBtn, { backgroundColor: 'rgba(255,255,255,0.18)' }]}
             onPress={() => router.push('/settings')}
             testID="header-settings-btn"
           >
-            <Ionicons name="settings-outline" size={20} color={C.onSurface2} />
+            <Ionicons name="settings-outline" size={20} color="#FFF" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerBtn} onPress={handleLogout} testID="logout-btn">
-            <Ionicons name="log-out-outline" size={20} color={C.onSurface2} />
+          <TouchableOpacity style={[styles.headerBtn, { backgroundColor: 'rgba(255,255,255,0.18)' }]} onPress={handleLogout} testID="logout-btn">
+            <Ionicons name="log-out-outline" size={20} color="#FFF" />
           </TouchableOpacity>
         </View>
-      </View>
+      </DiagonalBand>
 
       <OfflineBanner visible={offline} />
 

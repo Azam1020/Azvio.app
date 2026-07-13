@@ -16,9 +16,43 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 import { C, F, R } from './theme';
 
-// ---------- Screen header (back + title + optional right action) ----------
+/** الشريط القطري المزدوج (تيل + فحمي) — عنصر الهوية البصرية "المعتمدة نهائيًا"
+ * المستوحى من تداخل طبقتي شعار AZVIO. يُستخدم أعلى الشاشات الرئيسية (الدخول،
+ * الرئيسية، بطاقة العمل بالإعدادات) بدل هوية "زوايا الفوكس" السابقة. */
+export function DiagonalBand({
+  height = 130,
+  children,
+  teal = C.brand,
+  charcoal = C.charcoal,
+  style,
+}: {
+  height?: number;
+  children?: React.ReactNode;
+  teal?: string;
+  charcoal?: string;
+  style?: any;
+}) {
+  const W = 400; // مرجع فقط — الشكل يتمدد لعرض الشاشة الفعلي عبر preserveAspectRatio="none"
+  const H = height;
+  return (
+    <View style={[{ height, overflow: 'hidden' }, style]}>
+      <Svg width="100%" height={height} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0 }}>
+        <Defs>
+          <LinearGradient id="bandGrad" x1="0" y1="0" x2={W} y2={H * 0.6} gradientUnits="userSpaceOnUse">
+            <Stop offset="0.55" stopColor={teal} />
+            <Stop offset="0.55" stopColor={charcoal} />
+          </LinearGradient>
+        </Defs>
+        {/* شكل مقطوع بخط مائل (يطابق clip-path: polygon(0 0,100% 0,100% 80%,0 100%)) */}
+        <Path d={`M0,0 L${W},0 L${W},${H * 0.8} L0,${H} Z`} fill="url(#bandGrad)" />
+      </Svg>
+      <View style={{ flex: 1, justifyContent: 'flex-end', padding: 20, paddingBottom: 24 }}>{children}</View>
+    </View>
+  );
+}
 
 /** بطاقة موحّدة بهوية "زوايا الفوكس" (مستوحاة من إطار كاميرا الدرون) — التوقيع
  * البصري الرسمي لتطبيق AZVIO. تُستخدم بدل أي View بطاقة عادية بأي شاشة، عشان

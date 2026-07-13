@@ -19,6 +19,7 @@ export const lightColors = {
   border: '#E5E5EA',
   borderStrong: '#C7C7CC',
   whatsapp: '#25D366',
+  charcoal: '#414042', // لون الشريط القطري الثاني (طلب: هوية الشريط القطري المعتمدة)
 };
 
 export const darkColors: typeof lightColors = {
@@ -41,6 +42,7 @@ export const darkColors: typeof lightColors = {
   border: '#3A3A3C',
   borderStrong: '#54545A',
   whatsapp: '#25D366',
+  charcoal: '#58585A',
 };
 
 // Default/legacy export — screens not yet migrated to useTheme() keep using
