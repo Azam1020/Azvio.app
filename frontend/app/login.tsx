@@ -17,11 +17,12 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/src/AuthContext';
 import { useTheme } from '@/src/ThemeContext';
 import { hasSeenOnboarding } from '@/src/onboarding';
-import { F, R, shadow } from '@/src/theme';
+import { DiagonalBand } from '@/src/ui';
+import { F, R } from '@/src/theme';
 
 export default function LoginScreen() {
   const { user, loading, loginEmail } = useAuth();
-  const { C } = useTheme();
+  const { C, isDark } = useTheme();
   const styles = makeStyles(C);
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -60,13 +61,16 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: C.surface }}
+      style={{ flex: 1, backgroundColor: C.surface2 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      {/* الشريط القطري المزدوج — هوية شاشة الدخول المعتمدة */}
+      <DiagonalBand height={220} teal={C.brand} charcoal={C.charcoal} style={{ position: 'absolute', top: 0, left: 0, right: 0 }} />
+
       <ScrollView
         contentContainerStyle={[
           styles.container,
-          { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 40 },
+          { paddingTop: insets.top + 90, paddingBottom: insets.bottom + 40 },
         ]}
         keyboardShouldPersistTaps="handled"
       >
@@ -76,25 +80,25 @@ export default function LoginScreen() {
             style={styles.logoImg}
             resizeMode="contain"
           />
-          <Text style={styles.wordmark}>
-            AZV<Text style={{ color: C.brand }}>IO</Text>
-          </Text>
-          <Text style={styles.tagline}>لوحة إدارة أعمال التصوير الجوي والمونتاج</Text>
+          <Text style={styles.wordmark}>AZVIO</Text>
+          <Text style={styles.tagline}>من أول معك، إلى النهاية</Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>البريد الإلكتروني</Text>
+        <View style={styles.form}>
           <TextInput
             style={styles.input}
+            placeholder="البريد الإلكتروني"
+            placeholderTextColor={C.muted}
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
             testID="email-input"
           />
-          <Text style={styles.label}>كلمة المرور</Text>
           <TextInput
             style={styles.input}
+            placeholder="كلمة المرور"
+            placeholderTextColor={C.muted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -115,6 +119,10 @@ export default function LoginScreen() {
               <Text style={styles.loginText}>تسجيل الدخول</Text>
             )}
           </TouchableOpacity>
+
+          <TouchableOpacity style={styles.googleBtn}>
+            <Text style={styles.googleText}>الدخول عبر Google</Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.footer}>الدخول مقيّد لمدراء AZVIO فقط</Text>
@@ -125,40 +133,43 @@ export default function LoginScreen() {
 
 const makeStyles = (C: any) =>
   StyleSheet.create({
-    container: { flexGrow: 1, paddingHorizontal: 24 },
-    brandWrap: { alignItems: 'center', marginBottom: 36 },
-    logoImg: { width: 88, height: 88, marginBottom: 12 },
-    wordmark: { fontFamily: F.bold, fontSize: 32, letterSpacing: 4, color: C.onSurface },
-    tagline: { fontFamily: F.regular, fontSize: 13, color: C.muted, marginTop: 10, textAlign: 'center' },
-    card: {
+    container: { flexGrow: 1, paddingHorizontal: 24, alignItems: 'center' },
+    brandWrap: { alignItems: 'center', marginBottom: 28 },
+    logoImg: { width: 72, height: 72, marginBottom: 14 },
+    wordmark: { fontFamily: F.bold, fontSize: 26, letterSpacing: 0.5, color: C.onSurface },
+    tagline: { fontFamily: F.regular, fontSize: 13, color: C.muted, marginTop: 6, textAlign: 'center' },
+    form: { width: '100%', maxWidth: 320, gap: 12 },
+    input: {
       backgroundColor: C.surface,
-      borderRadius: R.lg,
-      padding: 20,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: C.border,
-      ...shadow,
-    },
-    label: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface2, marginBottom: 6, textAlign: 'right' },
-    input: {
-      backgroundColor: C.surface2,
-      borderRadius: R.md,
-      paddingHorizontal: 14,
-      paddingVertical: Platform.OS === 'ios' ? 13 : 10,
+      paddingHorizontal: 16,
+      paddingVertical: Platform.OS === 'ios' ? 14 : 12,
       fontFamily: F.regular,
-      fontSize: 15,
+      fontSize: 14,
       color: C.onSurface,
       textAlign: 'right',
-      marginBottom: 14,
     },
-    error: { fontFamily: F.regular, fontSize: 13, color: C.error, textAlign: 'center', marginBottom: 10 },
+    error: { fontFamily: F.regular, fontSize: 13, color: C.error, textAlign: 'center' },
     loginBtn: {
       backgroundColor: C.brand,
-      borderRadius: R.md,
+      borderRadius: 14,
       paddingVertical: 14,
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: 50,
+      marginTop: 4,
     },
-    loginText: { fontFamily: F.bold, fontSize: 16, color: '#FFF' },
+    loginText: { fontFamily: F.bold, fontSize: 14, color: '#FFF' },
+    googleBtn: {
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: C.border,
+      paddingVertical: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    googleText: { fontFamily: F.semibold, fontSize: 13, color: C.onSurface },
     footer: { fontFamily: F.regular, fontSize: 12, color: C.muted, textAlign: 'center', marginTop: 24 },
   });

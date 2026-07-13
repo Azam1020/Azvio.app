@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { api } from '@/src/api';
@@ -301,6 +301,28 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        <Text style={styles.sectionTitle}>بطاقة العمل</Text>
+        <View style={styles.bizCard}>
+          <View style={styles.bizCardLeft} />
+          <View style={styles.bizCardRight} />
+          <View style={styles.bizCardContent}>
+            <View style={styles.bizCardTop}>
+              <Image
+                source={require('../assets/images/azvio-logo.png')}
+                style={styles.bizLogo}
+                resizeMode="contain"
+              />
+              <Text style={styles.bizWordmark}>AZVIO</Text>
+            </View>
+            <View>
+              <Text style={styles.bizName}>{user?.name || 'عزام الزهراني'}</Text>
+              <Text style={styles.bizTitle}>منتج ومصوّر مستقل — AZVIO</Text>
+              <Text style={styles.bizContact}>+966 55 399 5867</Text>
+              <Text style={styles.bizContact}>{user?.email || 'azzam@azvio.co'} · azvio.co</Text>
+            </View>
+          </View>
+        </View>
       </ScrollView>
 
       <AppModal visible={pinModal} title="تعيين رمز سريع" onClose={() => setPinModal(false)} onSave={savePinCode}>
@@ -329,6 +351,32 @@ const makeStyles = (C: any) =>
   StyleSheet.create({
     wrap: { padding: 16, paddingBottom: 40 },
     card: { backgroundColor: C.surface, borderRadius: R.lg, padding: 16, marginBottom: 16, ...shadow },
+    bizCard: {
+      flexDirection: 'row',
+      borderRadius: 18,
+      overflow: 'hidden',
+      marginBottom: 26,
+      minHeight: 170,
+      position: 'relative',
+      ...shadow,
+    },
+    bizCardLeft: { width: '40%', backgroundColor: C.charcoal },
+    bizCardRight: { flex: 1, backgroundColor: C.brand },
+    bizCardContent: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      padding: 22,
+      justifyContent: 'space-between',
+    },
+    bizCardTop: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'flex-start' },
+    bizLogo: { width: 34, height: 34, tintColor: '#FFF' },
+    bizWordmark: { fontFamily: F.bold, fontSize: 13, color: '#FFF', letterSpacing: 0.5 },
+    bizName: { fontFamily: F.bold, fontSize: 16, color: '#FFF', textAlign: 'right' },
+    bizTitle: { fontFamily: F.regular, fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 4, textAlign: 'right' },
+    bizContact: { fontFamily: F.regular, fontSize: 10, color: 'rgba(255,255,255,0.85)', marginTop: 4, textAlign: 'right' },
     linkRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
     linkRowText: { flex: 1, fontFamily: F.regular, fontSize: 13, color: C.onSurface, textAlign: 'right' },
     profileRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
